@@ -1,0 +1,152 @@
+# KiroGate Microservices — Production-ready Docker Compose
+# Run: docker compose up --build
+# Access: http://localhost:3000
+
+services:
+  # ─────────────────────────────────────────────
+  # Frontend (Next.js Dashboard)
+  # ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: services/frontend/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://gateway:8000
+      - AUTH_URL=http://auth:8001
+      - AGENT_URL=http://agent:8002
+    depends_on:
+      gateway:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Auth Service (JWT, Login, SSO-ready)
+  # ─────────────────────────────────────────────
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - KIROGATE_AGENT_TOKEN=${KIROGATE_AGENT_TOKEN:-secure-production-token}
+      - KIROGATE_JWT_SECRET=${KIROGATE_JWT_SECRET:-change-me-in-production}
+      - KIROGATE_OPERATOR_EMAIL=${KIROGATE_OPERATOR_EMAIL:-admin@kirogate.dev}
+      - KIROGATE_OPERATOR_PASSWORD=${KIROGATE_OPERATOR_PASSWORD:-kirogate-demo}
+      - KIROGATE_OPERATOR_WORKSPACE=${KIROGATE_OPERATOR_WORKSPACE:-kirogate}
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - DATABASE_URL=postgresql://kirogate:kirogate@postgres:5432/kirogate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # KiroGate Gateway (Policy Enforcement Core)
+  # ─────────────────────────────────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - KIROGATE_AGENT_TOKEN=${KIROGATE_AGENT_TOKEN:-secure-production-token}
+      - KIROGATE_JWT_SECRET=${KIROGATE_JWT_SECRET:-change-me-in-production}
+      - AWS_ENDPOINT_URL=http://floci:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+      - DATABASE_URL=postgresql://kirogate:kirogate@postgres:5432/kirogate
+    depends_on:
+      floci:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Agent Service (LLM Provider + Demo Scenarios)
+  # ─────────────────────────────────────────────
+  agent:
+    build:
+      context: .
+      dockerfile: services/agent/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - KIROGATE_AGENT_TOKEN=${KIROGATE_AGENT_TOKEN:-secure-production-token}
+      - KIROGATE_JWT_SECRET=${KIROGATE_JWT_SECRET:-change-me-in-production}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 3
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL (Audit logs, user accounts)
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=kirogate
+      - POSTGRES_PASSWORD=kirogate
+      - POSTGRES_DB=kirogate
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kirogate"]
+      interval: 5s
+      timeout: 3s
+      start_period: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────
+  # Floci (AWS Emulator — replace with real AWS in prod)
+  # ─────────────────────────────────────────────
+  floci:
+    image: floci/floci:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - DEFAULT_REGION=us-east-1
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health || exit 0"]
+      interval: 5s
+      timeout: 3s
+      start_period: 3s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

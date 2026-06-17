@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "default": "deny",
+  "caller_auth": {
+    "method": "shared_token",
+    "token_env": "KIROGATE_AGENT_TOKEN"
+  },
+  "session_limits": {
+    "max_calls_per_session": 200,
+    "max_records_per_session": 5000
+  },
+  "tools": {
+    "db.query": {
+      "allow": true,
+      "operations": ["select"],
+      "tables": ["users", "orders", "products"],
+      "constraints": {
+        "limit": {"max": 100}
+      },
+      "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"],
+      "destination_whitelist": [],
+      "deny_destinations": [],
+      "aws_role": "arn:aws:iam::123456789012:role/KiroGate-DBQuery",
+      "session_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": ["rds-data:ExecuteStatement"],
+            "Resource": "*"
+          }
+        ]
+      }
+    },
+    "http.post": {
+      "allow": true,
+      "operations": ["POST"],
+      "tables": [],
+      "constraints": {},
+      "deny_keywords": ["password", "secret", "credential"],
+      "destination_whitelist": ["https://api.example.com", "https://hooks.slack.com"],
+      "deny_destinations": ["169.254.169.254", "metadata.google.internal"],
+      "aws_role": "arn:aws:iam::123456789012:role/KiroGate-HttpPost",
+      "session_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Effect": "Allow",
+            "Action": ["execute-api:Invoke"],
+            "Resource": "*"
+          }
+        ]
+      }
+    }
+  }
+}
