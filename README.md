@@ -136,6 +136,8 @@ Open http://localhost:3000 and login:
 - **Email:** admin@kirogate.dev
 - **Password:** kirogate-demo
 
+> ⚠️ These are **demo credentials** for local testing only. In production, set your own via environment variables (`KIROGATE_OPERATOR_EMAIL`, `KIROGATE_OPERATOR_PASSWORD`) or switch to SSO.
+
 ### Run without Docker (development):
 
 ```powershell

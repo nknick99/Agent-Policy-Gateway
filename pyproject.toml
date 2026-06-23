@@ -5,8 +5,20 @@ build-backend = "hatchling.build"
 [project]
 name = "kirogate"
 version = "0.1.0"
-description = "Deterministic Policy Gateway Proxy for AI Agents"
+description = "Zero Trust Policy Gateway for AI Agents"
 requires-python = ">=3.11"
+license = {text = "MIT"}
+readme = "README.md"
+keywords = ["ai", "agents", "security", "zero-trust", "mcp", "policy", "gateway"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
 dependencies = [
     "fastapi==0.115.12",
     "pydantic==2.11.3",
