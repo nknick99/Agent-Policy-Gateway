@@ -1,20 +1,20 @@
-# KiroGate — Zero Trust Policy Gateway for AI Agents
+# Agent Policy Gateway — Zero Trust Policy Gateway for AI Agents
 
-> **Guardrails hope. KiroGate guarantees.**
+> **Guardrails hope. Agent Policy Gateway guarantees.**
 
-KiroGate is a deterministic policy enforcement gateway that sits between AI agents and target systems (databases, APIs, cloud services). It inspects every action an agent wants to take, evaluates it against an immutable allowlist, and either permits or denies execution — in under 1 millisecond.
+Agent Policy Gateway is a deterministic policy enforcement gateway that sits between AI agents and target systems (databases, APIs, cloud services). It inspects every action an agent wants to take, evaluates it against an immutable allowlist, and either permits or denies execution — in under 1 millisecond.
 
 No LLM in the enforcement path. No probabilistic checks. Just code.
 
 ---
 
-## Why KiroGate Exists
+## Why Agent Policy Gateway Exists
 
 Every enterprise is deploying AI agents. Those agents need to access databases, APIs, and cloud resources. Today there's no control plane — agents either get full access or no access.
 
 **The problem with guardrails:**
 
-| | LLM Guardrails | KiroGate |
+| | LLM Guardrails | Agent Policy Gateway |
 |---|---|---|
 | Enforcement | Probabilistic (another LLM judges safety) | Deterministic (code-based allowlist) |
 | Bypass risk | High — prompt injection can trick the guard | Zero — allowlist is code, not conversation |
@@ -23,7 +23,7 @@ Every enterprise is deploying AI agents. Those agents need to access databases, 
 | Audit trail | "The model said it looked OK" | `policy.json` rule X matched, correlation_id Y |
 | Cost per 1M checks | $500-2000 (LLM API calls) | ~$0.50 (CPU compute) |
 
-KiroGate doesn't replace guardrails — it complements them. Guardrails are Layer 1 (input filtering). KiroGate is Layer 3 (execution boundary). If the guardrail misses something, KiroGate catches it. Guaranteed.
+Agent Policy Gateway doesn't replace guardrails — it complements them. Guardrails are Layer 1 (input filtering). Agent Policy Gateway is Layer 3 (execution boundary). If the guardrail misses something, Agent Policy Gateway catches it. Guaranteed.
 
 ---
 
@@ -38,7 +38,7 @@ KiroGate doesn't replace guardrails — it complements them. Guardrails are Laye
 │     └─────────┴─────────┴─────────┴─────────┘              │
 │                         │                                    │
 │              ┌──────────▼──────────┐                        │
-│              │   KiroGate Gateway  │ ← Deterministic policy │
+│              │   Agent Policy Gateway Gateway  │ ← Deterministic policy │
 │              │                     │                        │
 │              │  Auth → Schema →    │                        │
 │              │  Policy → Egress →  │   policy.json          │
@@ -92,7 +92,7 @@ The policy engine is pure CPU computation — no database, no network, no LLM in
 
 ## Microservices Architecture
 
-KiroGate runs as 6 containerized services:
+Agent Policy Gateway runs as 6 containerized services:
 
 | Service | Port | Responsibility |
 |---------|------|----------------|
@@ -132,18 +132,18 @@ docker compose up --build
 ```
 
 Open http://localhost:3000 and login:
-- **Workspace:** kirogate
-- **Email:** admin@kirogate.dev
-- **Password:** kirogate-demo
+- **Workspace:** Agent Policy Gateway
+- **Email:** admin@Agent Policy Gateway.dev
+- **Password:** Agent Policy Gateway-demo
 
-> ⚠️ These are **demo credentials** for local testing only. In production, set your own via environment variables (`KIROGATE_OPERATOR_EMAIL`, `KIROGATE_OPERATOR_PASSWORD`) or switch to SSO.
+> ⚠️ These are **demo credentials** for local testing only. In production, set your own via environment variables (`Agent Policy Gateway_OPERATOR_EMAIL`, `Agent Policy Gateway_OPERATOR_PASSWORD`) or switch to SSO.
 
 ### Run without Docker (development):
 
 ```powershell
 # Terminal 1 — Backend
-$env:KIROGATE_AGENT_TOKEN="test-token"
-python -m uvicorn kirogate.main:app --port 8000 --reload
+$env:Agent Policy Gateway_AGENT_TOKEN="test-token"
+python -m uvicorn Agent Policy Gateway.main:app --port 8000 --reload
 
 # Terminal 2 — Frontend
 cd frontend
@@ -169,7 +169,7 @@ The policy is a JSON allowlist loaded at startup. It directly maps to MCP `tools
       "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT"],
       "destination_whitelist": [],
       "deny_destinations": [],
-      "aws_role": "arn:aws:iam::123456789012:role/KiroGate-DBQuery"
+      "aws_role": "arn:aws:iam::123456789012:role/Agent Policy Gateway-DBQuery"
     },
     "http.post": {
       "allow": true,
@@ -237,7 +237,7 @@ LLM_SERVICE_URL=http://your-model:8001
 LLM_PROVIDER=mock
 ```
 
-KiroGate doesn't care what generates the intent. The policy enforcement is deterministic regardless of which LLM is used.
+Agent Policy Gateway doesn't care what generates the intent. The policy enforcement is deterministic regardless of which LLM is used.
 
 ---
 
@@ -245,7 +245,7 @@ KiroGate doesn't care what generates the intent. The policy enforcement is deter
 
 ```powershell
 # Build images
-$env:CONTAINER_REGISTRY = "kirogate.azurecr.io"
+$env:CONTAINER_REGISTRY = "Agent Policy Gateway.azurecr.io"
 ./deploy.ps1 build
 
 # Push to registry
@@ -319,7 +319,7 @@ MCPGate/
 │       ├── lib/                # API client, auth helpers
 │       └── middleware.ts       # Runtime service routing
 │
-├── src/kirogate/               # Python source
+├── src/Agent Policy Gateway/               # Python source
 │   ├── main.py                 # Monolith app (dev mode)
 │   ├── services/               # Microservice entry points
 │   ├── auth_service/           # JWT + pluggable providers
@@ -354,7 +354,7 @@ MCPGate/
 
 ## Who Is This For
 
-| Buyer | Pain Point | KiroGate Solution |
+| Buyer | Pain Point | Agent Policy Gateway Solution |
 |-------|-----------|-------------------|
 | **CISO** | "AI agents will be our next breach" | Zero Trust enforcement, full audit trail |
 | **Platform Engineering** | "Need governance for internal AI tools" | One gateway, per-agent policies |
@@ -363,9 +363,9 @@ MCPGate/
 
 ---
 
-## KiroGate vs Alternatives
+## Agent Policy Gateway vs Alternatives
 
-| | KiroGate | NeMo Guardrails | Lakera Guard | Custom IAM |
+| | Agent Policy Gateway | NeMo Guardrails | Lakera Guard | Custom IAM |
 |---|---|---|---|---|
 | Enforcement | Deterministic (code) | Probabilistic (LLM) | Probabilistic (classifier) | Static permissions |
 | Latency | 0.036ms | 200-800ms | 50-200ms | 0ms (no check) |
@@ -382,13 +382,13 @@ MCPGate/
 ```bash
 # Setup
 pip install -e ".[dev]"
-export KIROGATE_AGENT_TOKEN=test-token
+export Agent Policy Gateway_AGENT_TOKEN=test-token
 
 # Run tests
 pytest tests/ -x -q
 
 # Run locally
-python -m uvicorn kirogate.main:app --port 8000 --reload
+python -m uvicorn Agent Policy Gateway.main:app --port 8000 --reload
 ```
 
 ---
