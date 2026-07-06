@@ -1,4 +1,4 @@
-"""Tests for kirogate.audit module.
+"""Tests for agent_policy_gateway.audit module.
 
 Covers: correlation ID generation, event emission, redaction,
 decision-specific fields, exception safety, and immutability.
@@ -11,8 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
-from kirogate.audit import AuditEvent, AuditLogger, redact_params
-from kirogate.models import AuditDecision
+from agent_policy_gateway.audit import AuditEvent, AuditLogger, redact_params
+from agent_policy_gateway.models import AuditDecision
 
 
 class TestGenerateCorrelationId:

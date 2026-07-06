@@ -49,7 +49,7 @@ export default function DashboardHome() {
           getSystemStatus(),
           getAuditEvents({ limit: 5 }),
           fetch("/api/pipeline/stats", {
-            headers: { Authorization: `Bearer ${localStorage.getItem("kirogate_token") || ""}` },
+            headers: { Authorization: `Bearer ${localStorage.getItem("apg_token") || ""}` },
           }).then((r) => (r.ok ? r.json() : [])),
         ]);
         setStatus(s);
@@ -85,7 +85,7 @@ export default function DashboardHome() {
       <div>
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         <p className="text-kiro-muted text-sm mt-1">
-          KiroGate Policy Enforcement Console
+          Agent Policy Gateway Policy Enforcement Console
         </p>
       </div>
 

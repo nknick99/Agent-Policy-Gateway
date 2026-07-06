@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KiroGate Console",
+  title: "Agent Policy Gateway Console",
   description: "Deterministic AI Policy Enforcement Console",
 };
 

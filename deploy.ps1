@@ -1,4 +1,4 @@
-# KiroGate Deployment Script
+# Agent Policy Gateway Deployment Script
 # Usage:
 #   ./deploy.ps1 local    → docker compose up (local development)
 #   ./deploy.ps1 build    → build all Docker images
@@ -11,16 +11,16 @@ param(
     [string]$Action = "local"
 )
 
-$REGISTRY = $env:CONTAINER_REGISTRY ?? "kirogate.azurecr.io"
+$REGISTRY = $env:CONTAINER_REGISTRY ?? "agentpolicygateway.azurecr.io"
 $TAG = $env:IMAGE_TAG ?? "latest"
 
 function Build-Images {
     Write-Host "Building Docker images..." -ForegroundColor Cyan
 
-    docker build -t "${REGISTRY}/kirogate-gateway:${TAG}" -f services/gateway/Dockerfile .
-    docker build -t "${REGISTRY}/kirogate-auth:${TAG}" -f services/auth/Dockerfile .
-    docker build -t "${REGISTRY}/kirogate-agent:${TAG}" -f services/agent/Dockerfile .
-    docker build -t "${REGISTRY}/kirogate-frontend:${TAG}" -f services/frontend/Dockerfile .
+    docker build -t "${REGISTRY}/apg-gateway:${TAG}" -f services/gateway/Dockerfile .
+    docker build -t "${REGISTRY}/apg-auth:${TAG}" -f services/auth/Dockerfile .
+    docker build -t "${REGISTRY}/apg-agent:${TAG}" -f services/agent/Dockerfile .
+    docker build -t "${REGISTRY}/apg-frontend:${TAG}" -f services/frontend/Dockerfile .
 
     Write-Host "All images built." -ForegroundColor Green
 }
@@ -28,10 +28,10 @@ function Build-Images {
 function Push-Images {
     Write-Host "Pushing images to $REGISTRY..." -ForegroundColor Cyan
 
-    docker push "${REGISTRY}/kirogate-gateway:${TAG}"
-    docker push "${REGISTRY}/kirogate-auth:${TAG}"
-    docker push "${REGISTRY}/kirogate-agent:${TAG}"
-    docker push "${REGISTRY}/kirogate-frontend:${TAG}"
+    docker push "${REGISTRY}/apg-gateway:${TAG}"
+    docker push "${REGISTRY}/apg-auth:${TAG}"
+    docker push "${REGISTRY}/apg-agent:${TAG}"
+    docker push "${REGISTRY}/apg-frontend:${TAG}"
 
     Write-Host "All images pushed." -ForegroundColor Green
 }
@@ -48,13 +48,13 @@ function Deploy-AKS {
 
     Write-Host ""
     Write-Host "Deployment complete. Checking rollout status..." -ForegroundColor Green
-    kubectl -n kirogate rollout status deployment/gateway --timeout=120s
-    kubectl -n kirogate rollout status deployment/auth --timeout=60s
-    kubectl -n kirogate rollout status deployment/frontend --timeout=60s
+    kubectl -n agent-policy-gateway rollout status deployment/gateway --timeout=120s
+    kubectl -n agent-policy-gateway rollout status deployment/auth --timeout=60s
+    kubectl -n agent-policy-gateway rollout status deployment/frontend --timeout=60s
 
     Write-Host ""
     Write-Host "All services deployed:" -ForegroundColor Green
-    kubectl -n kirogate get pods
+    kubectl -n agent-policy-gateway get pods
 }
 
 switch ($Action) {
@@ -70,9 +70,9 @@ switch ($Action) {
         Write-Host "  Postgres:  localhost:5432"
         Write-Host ""
         Write-Host "Credentials:" -ForegroundColor Yellow
-        Write-Host "  Email:     admin@kirogate.dev"
-        Write-Host "  Password:  kirogate-demo"
-        Write-Host "  Workspace: kirogate"
+        Write-Host "  Email:     admin@apg.dev"
+        Write-Host "  Password:  apg-demo"
+        Write-Host "  Workspace: apg"
         Write-Host ""
         docker compose up --build
     }

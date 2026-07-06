@@ -5,8 +5,8 @@
  * replace the login flow but keep the token storage the same.
  */
 
-const TOKEN_KEY = "kirogate_token";
-const USER_KEY = "kirogate_user";
+const TOKEN_KEY = "apg_token";
+const USER_KEY = "apg_user";
 
 export interface User {
   user_id: string;

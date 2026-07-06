@@ -31,7 +31,7 @@ export function Sidebar() {
       <div className="p-4 border-b border-kiro-border">
         <Link href="/dashboard" className="flex items-center gap-2">
           <Shield className="w-5 h-5 text-kiro-accent" />
-          <span className="font-semibold">KiroGate</span>
+          <span className="font-semibold">Agent Policy Gateway</span>
         </Link>
       </div>
 

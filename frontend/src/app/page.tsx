@@ -8,9 +8,9 @@ import { setAuth } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [workspace, setWorkspace] = useState("kirogate");
-  const [email, setEmail] = useState("admin@kirogate.dev");
-  const [password, setPassword] = useState("kirogate-demo");
+  const [workspace, setWorkspace] = useState("apg");
+  const [email, setEmail] = useState("admin@apg.dev");
+  const [password, setPassword] = useState("apg-demo");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -36,7 +36,7 @@ export default function LoginPage() {
       {/* Left branding panel */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-center px-16 bg-gradient-to-br from-kiro-surface to-kiro-bg border-r border-kiro-border">
         <div className="max-w-md">
-          <h1 className="text-3xl font-bold mb-2">KiroGate</h1>
+          <h1 className="text-3xl font-bold mb-2">Agent Policy Gateway</h1>
           <p className="text-kiro-muted mb-10">
             Deterministic AI Policy Enforcement
           </p>
@@ -71,7 +71,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm">
           <h2 className="text-2xl font-semibold mb-1">Operator Access</h2>
           <p className="text-kiro-muted text-sm mb-8">
-            Sign in to the KiroGate console
+            Sign in to the Agent Policy Gateway console
           </p>
 
           {error && (

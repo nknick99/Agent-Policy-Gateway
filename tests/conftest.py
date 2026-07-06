@@ -1,4 +1,4 @@
-"""Shared test fixtures for KiroGate tests."""
+"""Shared test fixtures for Agent Policy Gateway tests."""
 
 import pytest
 
@@ -10,7 +10,7 @@ def sample_policy():
         "default": "deny",
         "caller_auth": {
             "type": "bearer_token",
-            "env_var": "KIROGATE_AGENT_TOKEN",
+            "env_var": "APG_AGENT_TOKEN",
         },
         "session_limits": {
             "max_calls_per_session": 100,
@@ -23,7 +23,7 @@ def sample_policy():
                 "tables": ["users", "orders"],
                 "constraints": {"max_rows": 1000},
                 "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT"],
-                "aws_role": "arn:aws:iam::123456789012:role/KiroGate-DBQuery",
+                "aws_role": "arn:aws:iam::123456789012:role/Agent Policy Gateway-DBQuery",
                 "session_policy": '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["rds-data:ExecuteStatement"],"Resource":"*"}]}',
             },
             "http.post": {
@@ -33,7 +33,7 @@ def sample_policy():
                 "deny_destinations": ["metadata.google.internal"],
                 "constraints": {"max_body_bytes": 10240},
                 "deny_keywords": ["password", "secret"],
-                "aws_role": "arn:aws:iam::123456789012:role/KiroGate-HttpPost",
+                "aws_role": "arn:aws:iam::123456789012:role/Agent Policy Gateway-HttpPost",
                 "session_policy": '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["execute-api:Invoke"],"Resource":"*"}]}',
             },
         },

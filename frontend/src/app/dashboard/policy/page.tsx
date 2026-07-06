@@ -15,8 +15,8 @@ const policyJson = `{
     "metadata.google.internal"
   ],
   "role_mappings": {
-    "sql_read": "arn:aws:iam::123456789:role/kirogate-sql-ro",
-    "http_get": "arn:aws:iam::123456789:role/kirogate-http-ro"
+    "sql_read": "arn:aws:iam::123456789:role/apg-sql-ro",
+    "http_get": "arn:aws:iam::123456789:role/apg-http-ro"
   },
   "quotas": {
     "requests_per_minute": 60,
@@ -135,7 +135,7 @@ export default function PolicyPage() {
               </div>
               <div className="rounded-md bg-kiro-bg p-3">
                 <p className="text-[10px] text-kiro-muted uppercase tracking-wider mb-1">
-                  KiroGate
+                  Agent Policy Gateway
                 </p>
                 <p className="text-xs text-emerald-400">
                   Code-based — allowlist checked before execution

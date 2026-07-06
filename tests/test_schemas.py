@@ -1,9 +1,9 @@
-"""Tests for KiroGate JSON-RPC schemas and parameter models."""
+"""Tests for Agent Policy Gateway JSON-RPC schemas and parameter models."""
 
 import pytest
 from pydantic import ValidationError
 
-from kirogate.schemas import (
+from agent_policy_gateway.schemas import (
     DbQueryParams,
     HttpPostParams,
     JsonRpcError,

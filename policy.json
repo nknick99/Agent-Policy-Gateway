@@ -3,7 +3,7 @@
   "default": "deny",
   "caller_auth": {
     "method": "shared_token",
-    "token_env": "KIROGATE_AGENT_TOKEN"
+    "token_env": "APG_AGENT_TOKEN"
   },
   "session_limits": {
     "max_calls_per_session": 200,
@@ -20,7 +20,7 @@
       "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"],
       "destination_whitelist": [],
       "deny_destinations": [],
-      "aws_role": "arn:aws:iam::123456789012:role/KiroGate-DBQuery",
+      "aws_role": "arn:aws:iam::123456789012:role/APG-DBQuery",
       "session_policy": {
         "Version": "2012-10-17",
         "Statement": [
@@ -40,7 +40,7 @@
       "deny_keywords": ["password", "secret", "credential"],
       "destination_whitelist": ["https://api.example.com", "https://hooks.slack.com"],
       "deny_destinations": ["169.254.169.254", "metadata.google.internal"],
-      "aws_role": "arn:aws:iam::123456789012:role/KiroGate-HttpPost",
+      "aws_role": "arn:aws:iam::123456789012:role/APG-HttpPost",
       "session_policy": {
         "Version": "2012-10-17",
         "Statement": [

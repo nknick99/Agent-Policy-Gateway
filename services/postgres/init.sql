@@ -1,4 +1,4 @@
--- KiroGate Database Schema
+-- Agent Policy Gateway Database Schema
 -- Used by auth-service (users) and gateway (audit log)
 
 -- Users table (for auth service)
@@ -59,5 +59,5 @@ CREATE TABLE IF NOT EXISTS policy_history (
 
 -- Seed default operator account
 INSERT INTO users (email, workspace, password_hash, role)
-VALUES ('admin@kirogate.dev', 'kirogate', 'kirogate-demo', 'operator')
+VALUES ('admin@apg.dev', 'apg', 'apg-demo', 'operator')
 ON CONFLICT (email) DO NOTHING;

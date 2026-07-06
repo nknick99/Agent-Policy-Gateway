@@ -1,5 +1,5 @@
 /**
- * API client for KiroGate backend.
+ * API client for Agent Policy Gateway backend.
  *
  * All backend calls go through this module. When you switch from
  * Python/FastAPI to Go, just update BACKEND_URL — no frontend changes.

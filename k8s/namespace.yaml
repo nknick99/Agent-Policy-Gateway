@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: kirogate
+  name: agent-policy-gateway
   labels:
-    app.kubernetes.io/name: kirogate
-    app.kubernetes.io/part-of: kirogate
+    app.kubernetes.io/name: agent-policy-gateway
+    app.kubernetes.io/part-of: agent-policy-gateway

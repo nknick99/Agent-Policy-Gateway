@@ -2,8 +2,8 @@
 
 import pytest
 
-from kirogate.models import SessionLimits
-from kirogate.session import SessionManager
+from agent_policy_gateway.models import SessionLimits
+from agent_policy_gateway.session import SessionManager
 
 
 @pytest.fixture

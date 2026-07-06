@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from kirogate.models import Decision
-from kirogate.policy import PolicyEvaluator, PolicyResult
+from agent_policy_gateway.models import Decision
+from agent_policy_gateway.policy import PolicyEvaluator, PolicyResult
 
 
 # --- Fixtures ---
@@ -34,7 +34,7 @@ def _valid_policy() -> dict[str, Any]:
         "default": "deny",
         "caller_auth": {
             "method": "shared_token",
-            "token_env": "KIROGATE_AGENT_TOKEN",
+            "token_env": "APG_AGENT_TOKEN",
         },
         "session_limits": {
             "max_calls_per_session": 200,
@@ -146,7 +146,7 @@ class TestPolicyEvaluatorInit:
         """Requirement 11.1: Startup log confirms policy loaded as immutable."""
         import logging
 
-        with caplog.at_level(logging.INFO, logger="kirogate.policy"):
+        with caplog.at_level(logging.INFO, logger="agent_policy_gateway.policy"):
             PolicyEvaluator(policy_path=policy_path)
         assert any("Policy loaded as immutable" in msg for msg in caplog.messages)
 

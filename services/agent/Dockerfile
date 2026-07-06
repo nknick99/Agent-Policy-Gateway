@@ -17,7 +17,7 @@ ENV PORT=8002
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"
 
-CMD ["gunicorn", "kirogate.services.agent_app:app", \
+CMD ["gunicorn", "agent_policy_gateway.services.agent_app:app", \
      "--bind", "0.0.0.0:8002", \
      "--workers", "2", \
      "--worker-class", "uvicorn.workers.UvicornWorker", \

@@ -1,4 +1,4 @@
-# KiroGate Microservices — Production-ready Docker Compose
+# Agent Policy Gateway — Production-ready Docker Compose
 # Run: docker compose up --build
 # Access: http://localhost:3000
 
@@ -33,13 +33,13 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - KIROGATE_AGENT_TOKEN=${KIROGATE_AGENT_TOKEN:-secure-production-token}
-      - KIROGATE_JWT_SECRET=${KIROGATE_JWT_SECRET:-change-me-in-production}
-      - KIROGATE_OPERATOR_EMAIL=${KIROGATE_OPERATOR_EMAIL:-admin@kirogate.dev}
-      - KIROGATE_OPERATOR_PASSWORD=${KIROGATE_OPERATOR_PASSWORD:-kirogate-demo}
-      - KIROGATE_OPERATOR_WORKSPACE=${KIROGATE_OPERATOR_WORKSPACE:-kirogate}
+      - APG_AGENT_TOKEN=${APG_AGENT_TOKEN:-secure-production-token}
+      - APG_JWT_SECRET=${APG_JWT_SECRET:-change-me-in-production}
+      - APG_OPERATOR_EMAIL=${APG_OPERATOR_EMAIL:-admin@apg.dev}
+      - APG_OPERATOR_PASSWORD=${APG_OPERATOR_PASSWORD:-apg-demo}
+      - APG_OPERATOR_WORKSPACE=${APG_OPERATOR_WORKSPACE:-apg}
       - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
-      - DATABASE_URL=postgresql://kirogate:kirogate@postgres:5432/kirogate
+      - DATABASE_URL=postgresql://apg:apg@postgres:5432/apg
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,7 +52,7 @@ services:
     restart: unless-stopped
 
   # ─────────────────────────────────────────────
-  # KiroGate Gateway (Policy Enforcement Core)
+  # Gateway (Policy Enforcement Core)
   # ─────────────────────────────────────────────
   gateway:
     build:
@@ -61,14 +61,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - KIROGATE_AGENT_TOKEN=${KIROGATE_AGENT_TOKEN:-secure-production-token}
-      - KIROGATE_JWT_SECRET=${KIROGATE_JWT_SECRET:-change-me-in-production}
+      - APG_AGENT_TOKEN=${APG_AGENT_TOKEN:-secure-production-token}
+      - APG_JWT_SECRET=${APG_JWT_SECRET:-change-me-in-production}
       - AWS_ENDPOINT_URL=http://floci:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
       - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
-      - DATABASE_URL=postgresql://kirogate:kirogate@postgres:5432/kirogate
+      - DATABASE_URL=postgresql://apg:apg@postgres:5432/apg
     depends_on:
       floci:
         condition: service_started
@@ -92,8 +92,8 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - KIROGATE_AGENT_TOKEN=${KIROGATE_AGENT_TOKEN:-secure-production-token}
-      - KIROGATE_JWT_SECRET=${KIROGATE_JWT_SECRET:-change-me-in-production}
+      - APG_AGENT_TOKEN=${APG_AGENT_TOKEN:-secure-production-token}
+      - APG_JWT_SECRET=${APG_JWT_SECRET:-change-me-in-production}
       - LLM_PROVIDER=${LLM_PROVIDER:-mock}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -117,14 +117,14 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=kirogate
-      - POSTGRES_PASSWORD=kirogate
-      - POSTGRES_DB=kirogate
+      - POSTGRES_USER=apg
+      - POSTGRES_PASSWORD=apg
+      - POSTGRES_DB=apg
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./services/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U kirogate"]
+      test: ["CMD-SHELL", "pg_isready -U apg"]
       interval: 5s
       timeout: 3s
       start_period: 5s

@@ -1,6 +1,6 @@
-# KiroGate Frontend
+# Agent Policy Gateway Frontend
 
-Next.js dashboard for the KiroGate deterministic AI policy enforcement proxy.
+Next.js dashboard for the Agent Policy Gateway deterministic AI policy enforcement proxy.
 
 ## Architecture
 
@@ -52,5 +52,5 @@ Implement these in Python (FastAPI) today, swap to Go (net/http, chi, etc.) late
 
 - **Next.js 14** — App Router
 - **TypeScript** — strict mode
-- **Tailwind CSS** — dark theme with custom KiroGate palette
+- **Tailwind CSS** — dark theme with custom Agent Policy Gateway palette
 - **Lucide React** — icons

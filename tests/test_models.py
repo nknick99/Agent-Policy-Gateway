@@ -1,11 +1,11 @@
-"""Tests for KiroGate data models and shared types."""
+"""Tests for Agent Policy Gateway data models and shared types."""
 
 from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
 
-from kirogate.models import (
+from agent_policy_gateway.models import (
     AuditDecision,
     CallerAuth,
     Constraints,
@@ -43,7 +43,7 @@ class TestCallerAuth:
     def test_valid_shared_token(self):
         auth = CallerAuth(method="shared_token")
         assert auth.method == "shared_token"
-        assert auth.token_env == "KIROGATE_AGENT_TOKEN"
+        assert auth.token_env == "APG_AGENT_TOKEN"
 
     def test_custom_token_env(self):
         auth = CallerAuth(method="shared_token", token_env="MY_TOKEN")

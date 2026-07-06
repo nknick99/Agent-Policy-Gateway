@@ -1,4 +1,4 @@
-"""Tests for KiroGate STS credential broker."""
+"""Tests for Agent Policy Gateway STS credential broker."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kirogate.sts_broker import CredentialMintError, JitCredentials, StsBroker
+from agent_policy_gateway.sts_broker import CredentialMintError, JitCredentials, StsBroker
 
 
 # --- Fixtures ---
@@ -25,8 +25,8 @@ def mock_sts_client():
             "Expiration": datetime(2025, 1, 1, 0, 15, 0, tzinfo=timezone.utc),
         },
         "AssumedRoleUser": {
-            "AssumedRoleId": "AROA3XFRBF23:kirogate-abc123",
-            "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/kirogate-abc123",
+            "AssumedRoleId": "AROA3XFRBF23:apg-abc123",
+            "Arn": "arn:aws:sts::123456789012:assumed-role/TestRole/apg-abc123",
         },
     }
     return client
@@ -40,7 +40,7 @@ def broker(mock_sts_client):
 
 @pytest.fixture
 def valid_role_arn():
-    return "arn:aws:iam::123456789012:role/KiroGateAgentRole"
+    return "arn:aws:iam::123456789012:role/Agent Policy GatewayAgentRole"
 
 
 @pytest.fixture
@@ -70,7 +70,7 @@ class TestMintCredentials:
         creds = broker.mint_credentials(
             role_arn=valid_role_arn,
             session_policy=valid_session_policy,
-            session_name="kirogate-abc12345",
+            session_name="apg-abc12345",
         )
 
         assert isinstance(creds, JitCredentials)
@@ -86,14 +86,14 @@ class TestMintCredentials:
         broker.mint_credentials(
             role_arn=valid_role_arn,
             session_policy=valid_session_policy,
-            session_name="kirogate-corr1234",
+            session_name="apg-corr1234",
             duration_seconds=900,
         )
 
         mock_sts_client.assume_role.assert_called_once()
         call_kwargs = mock_sts_client.assume_role.call_args[1]
         assert call_kwargs["RoleArn"] == valid_role_arn
-        assert call_kwargs["RoleSessionName"] == "kirogate-corr1234"
+        assert call_kwargs["RoleSessionName"] == "apg-corr1234"
         assert call_kwargs["DurationSeconds"] == 900
         assert '"dynamodb:GetItem"' in call_kwargs["Policy"]
 
@@ -104,7 +104,7 @@ class TestMintCredentials:
         broker.mint_credentials(
             role_arn=valid_role_arn,
             session_policy=valid_session_policy,
-            session_name="kirogate-test",
+            session_name="apg-test",
         )
 
         call_kwargs = mock_sts_client.assume_role.call_args[1]
@@ -115,7 +115,7 @@ class TestMintCredentials:
     ):
         """RoleSessionName should contain the correlation_id for CloudTrail tracing."""
         correlation_id = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-        session_name = f"kirogate-{correlation_id[:8]}"
+        session_name = f"apg-{correlation_id[:8]}"
 
         broker.mint_credentials(
             role_arn=valid_role_arn,
@@ -124,7 +124,7 @@ class TestMintCredentials:
         )
 
         call_kwargs = mock_sts_client.assume_role.call_args[1]
-        assert call_kwargs["RoleSessionName"] == "kirogate-a1b2c3d4"
+        assert call_kwargs["RoleSessionName"] == "apg-a1b2c3d4"
 
     def test_empty_role_arn_raises_credential_mint_error(
         self, broker, valid_session_policy
@@ -134,7 +134,7 @@ class TestMintCredentials:
             broker.mint_credentials(
                 role_arn="",
                 session_policy=valid_session_policy,
-                session_name="kirogate-test",
+                session_name="apg-test",
             )
         assert "Credential minting failed" in str(exc_info.value)
 
@@ -146,7 +146,7 @@ class TestMintCredentials:
             broker.mint_credentials(
                 role_arn=None,
                 session_policy=valid_session_policy,
-                session_name="kirogate-test",
+                session_name="apg-test",
             )
         assert "Credential minting failed" in str(exc_info.value)
 
@@ -158,7 +158,7 @@ class TestMintCredentials:
             broker.mint_credentials(
                 role_arn="   ",
                 session_policy=valid_session_policy,
-                session_name="kirogate-test",
+                session_name="apg-test",
             )
         assert "Credential minting failed" in str(exc_info.value)
 
@@ -170,7 +170,7 @@ class TestMintCredentials:
             broker.mint_credentials(
                 role_arn=valid_role_arn,
                 session_policy={},
-                session_name="kirogate-test",
+                session_name="apg-test",
             )
         assert "Credential minting failed" in str(exc_info.value)
 
@@ -182,7 +182,7 @@ class TestMintCredentials:
             broker.mint_credentials(
                 role_arn=valid_role_arn,
                 session_policy=None,
-                session_name="kirogate-test",
+                session_name="apg-test",
             )
         assert "Credential minting failed" in str(exc_info.value)
 
@@ -201,7 +201,7 @@ class TestMintCredentials:
             broker.mint_credentials(
                 role_arn=valid_role_arn,
                 session_policy=valid_session_policy,
-                session_name="kirogate-test",
+                session_name="apg-test",
             )
         # Generic message — no AWS details leaked
         assert str(exc_info.value) == "Credential minting failed"
@@ -226,7 +226,7 @@ class TestMintCredentials:
             broker.mint_credentials(
                 role_arn=valid_role_arn,
                 session_policy=valid_session_policy,
-                session_name="kirogate-test",
+                session_name="apg-test",
             )
 
         error_msg = str(exc_info.value)
@@ -346,7 +346,7 @@ class TestLazyClientCreation:
         broker.mint_credentials(
             role_arn=valid_role_arn,
             session_policy=valid_session_policy,
-            session_name="kirogate-test",
+            session_name="apg-test",
         )
         mock_sts_client.assume_role.assert_called_once()
 
@@ -370,7 +370,7 @@ class TestLazyClientCreation:
         broker.mint_credentials(
             role_arn=valid_role_arn,
             session_policy=valid_session_policy,
-            session_name="kirogate-test",
+            session_name="apg-test",
         )
 
         mock_boto3_client.assert_called_once_with("sts")

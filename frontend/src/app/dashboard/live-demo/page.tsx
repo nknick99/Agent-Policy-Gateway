@@ -41,7 +41,7 @@ const scenarios = [
     id: 1,
     name: "Read Customer Data",
     icon: Database,
-    description: "Agent queries active customers. KiroGate allows SELECT and redacts SSN.",
+    description: "Agent queries active customers. Agent Policy Gateway allows SELECT and redacts SSN.",
     category: "Database Query",
     expected: "ALLOWED",
   },
@@ -49,7 +49,7 @@ const scenarios = [
     id: 2,
     name: "Delete Records",
     icon: ShieldAlert,
-    description: "Agent tries DELETE. KiroGate blocks — only SELECT permitted.",
+    description: "Agent tries DELETE. Agent Policy Gateway blocks — only SELECT permitted.",
     category: "Database Mutation",
     expected: "DENIED",
   },
@@ -115,7 +115,7 @@ export default function LiveDemoPage() {
             Live Agent Demo
           </h1>
           <p className="text-kiro-muted text-sm mt-1">
-            Real AI agent actions enforced through KiroGate policy gateway
+            Real AI agent actions enforced through Agent Policy Gateway policy gateway
           </p>
         </div>
         <button
@@ -136,7 +136,7 @@ export default function LiveDemoPage() {
           <ArrowRight className="w-3 h-3" />
           <span>generates intent</span>
           <ArrowRight className="w-3 h-3" />
-          <span className="badge badge-warning">KiroGate Policy</span>
+          <span className="badge badge-warning">Agent Policy Gateway Policy</span>
           <ArrowRight className="w-3 h-3" />
           <span>evaluates pipeline</span>
           <ArrowRight className="w-3 h-3" />
@@ -146,7 +146,7 @@ export default function LiveDemoPage() {
         </div>
         <p className="text-xs text-kiro-muted mt-2">
           The LLM provider is swappable — Ollama (local), OpenAI, Anthropic, or mock for demos.
-          KiroGate doesn&apos;t care what generates the intent; it enforces policy deterministically.
+          Agent Policy Gateway doesn&apos;t care what generates the intent; it enforces policy deterministically.
         </p>
       </div>
 
