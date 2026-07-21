@@ -56,7 +56,6 @@ class PolicyResponse(BaseModel):
     policy: dict[str, Any]
     hash: str
     loaded_at: str
-    test_results: dict[str, int]
 
 
 class AuditEventResponse(BaseModel):
@@ -149,6 +148,33 @@ def record_audit_event(
     })
 
 
+def _live_quota_usage() -> float:
+    """Real max quota utilization across active sessions, as a percentage.
+
+    Reads the running gateway's session manager (same process, ADR-001).
+    Returns 0.0 when the gateway app has not been initialized (e.g. the
+    dashboard router is imported in isolation by a test).
+    """
+    try:
+        from agent_policy_gateway.server import app as app_module
+
+        manager = app_module.session_manager
+        limits = app_module.policy_evaluator.policy.session_limits
+    except (ImportError, AttributeError, NameError):
+        return 0.0
+
+    sessions = getattr(manager, "_sessions", {})
+    if not sessions:
+        return 0.0
+
+    max_ratio = 0.0
+    for session in sessions.values():
+        call_ratio = session.call_count / max(limits.max_calls_per_session, 1)
+        record_ratio = session.record_count / max(limits.max_records_per_session, 1)
+        max_ratio = max(max_ratio, call_ratio, record_ratio)
+    return round(min(max_ratio, 1.0) * 100, 1)
+
+
 def _load_policy() -> dict[str, Any]:
     """Load policy.json from the project root."""
     policy_path = Path(__file__).parent.parent.parent.parent / "policy.json"
@@ -185,7 +211,7 @@ async def get_status(authorization: str = Header(default="")) -> SystemStatus:
         environment=os.environ.get("APG_ENV", "production"),
         recent_requests=_request_count,
         deny_rate=round(deny_rate, 1),
-        quota_usage=42.0,  # Placeholder — wire to session manager
+        quota_usage=_live_quota_usage(),
         audit_logging="Active",
         uptime=round(uptime, 2),
     )
@@ -202,7 +228,6 @@ async def get_policy(authorization: str = Header(default="")) -> PolicyResponse:
         policy=policy,
         hash=_policy_hash(policy),
         loaded_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_start_time)),
-        test_results={"passed": 218, "failed": 0},
     )
 
 
@@ -237,6 +262,11 @@ async def get_audit_events(
 
 
 # --- Demo Scenarios ---
+#
+# The inputs are fixed; the OUTCOMES are computed live by the real policy
+# engine + egress controller (never hand-written), so these results track
+# the actual enforcement code. Scenario 5 genuinely trips quota by driving
+# a real SessionManager past a low per-demo limit.
 
 _DEMO_SCENARIOS: list[dict[str, Any]] = [
     {
@@ -244,46 +274,111 @@ _DEMO_SCENARIOS: list[dict[str, Any]] = [
         "name": "Valid SELECT Query",
         "method": "db.query",
         "params": {"query": "SELECT * FROM users WHERE active=true"},
-        "outcome": "ALLOWED",
-        "stage": "Return",
     },
     {
         "id": 2,
         "name": "DELETE Operation",
         "method": "db.query",
         "params": {"query": "DELETE FROM users WHERE id=42"},
-        "outcome": "DENIED",
-        "failed_stage": "Policy Eval",
-        "reason": "Verb DELETE not in permitted operations (allowed: select)",
     },
     {
         "id": 3,
         "name": "SSRF Attempt",
         "method": "http.post",
         "params": {"url": "http://169.254.169.254/latest/meta-data/"},
-        "outcome": "DENIED",
-        "failed_stage": "Egress Ctrl",
-        "reason": "Destination 169.254.169.254 in deny list",
     },
     {
         "id": 4,
         "name": "Prompt Injection",
         "method": "db.query",
         "params": {"query": "SELECT 1; DROP TABLE users;--"},
-        "outcome": "DENIED",
-        "failed_stage": "Policy Eval",
-        "reason": "Keyword DROP in deny_keywords",
     },
     {
         "id": 5,
         "name": "Quota Exceeded",
         "method": "db.query",
         "params": {"query": "SELECT count(*) FROM orders"},
-        "outcome": "DENIED",
-        "failed_stage": "Quota Check",
-        "reason": "Rate limit exceeded: 201/200 calls per session",
+        "quota": True,
     },
 ]
+
+# Loaded lazily so importing the router never touches the filesystem.
+_demo_evaluator = None
+
+
+def _get_demo_evaluator():
+    global _demo_evaluator
+    if _demo_evaluator is None:
+        from agent_policy_gateway.core.models import PolicyDocument
+        from agent_policy_gateway.core.policy import (
+            PolicyEvaluator,
+            PolicyLoadError,
+            load_policy_document,
+        )
+
+        try:
+            _demo_evaluator = PolicyEvaluator.from_document(
+                load_policy_document(str(_policy_source_path()))
+            )
+        except PolicyLoadError:
+            _demo_evaluator = PolicyEvaluator.from_document(
+                PolicyDocument.model_validate(
+                    {
+                        "version": 1,
+                        "default": "deny",
+                        "caller_auth": {"method": "shared_token"},
+                        "session_limits": {},
+                        "tools": {},
+                    }
+                )
+            )
+    return _demo_evaluator
+
+
+def _policy_source_path() -> Path:
+    root = Path(__file__).parent.parent.parent.parent / "policy.json"
+    return root if root.exists() else Path("policy.json")
+
+
+def _evaluate_demo(method: str, params: dict[str, Any]) -> tuple[str, str | None, str | None]:
+    """Run one demo input through the real engine.
+
+    Returns (outcome, failed_stage, reason).
+    """
+    from agent_policy_gateway.core.egress import EgressController
+    from agent_policy_gateway.core.models import Decision
+
+    result = _get_demo_evaluator().evaluate(method, params)
+    if result.decision == Decision.DENY:
+        return "DENIED", "Policy Eval", result.reason
+
+    destination = params.get("url") or params.get("destination")
+    if destination and result.tool_config is not None:
+        egress = EgressController(result.tool_config).check(destination)
+        if not egress.allowed:
+            return "DENIED", "Egress Ctrl", egress.reason
+
+    return "ALLOWED", None, None
+
+
+async def _evaluate_quota_demo(method: str, params: dict[str, Any]) -> tuple[str, str | None, str | None]:
+    """Genuinely trip a real SessionManager past a low demo limit."""
+    from agent_policy_gateway.core.models import SessionLimits
+    from agent_policy_gateway.core.session import SessionManager
+
+    limits = SessionLimits(max_calls_per_session=3, max_records_per_session=1000)
+    manager = SessionManager()
+    caller = "dashboard-quota-demo"
+    for _ in range(limits.max_calls_per_session):
+        await manager.record_success(caller)
+    if await manager.check_quota(caller, limits):
+        return (
+            "DENIED",
+            "Quota Check",
+            f"Session quota exceeded "
+            f"({limits.max_calls_per_session + 0}/{limits.max_calls_per_session} calls)",
+        )
+    return "ALLOWED", None, None
 
 
 @router.post("/demo/run/{scenario_id}", response_model=DemoResult)
@@ -291,7 +386,7 @@ async def run_demo(
     scenario_id: int,
     authorization: str = Header(default=""),
 ) -> DemoResult:
-    """Execute a demo scenario and return the enforcement result."""
+    """Execute a demo scenario and return the real enforcement result."""
     _require_auth(authorization)
 
     scenario = next(
@@ -300,31 +395,33 @@ async def run_demo(
     if scenario is None:
         raise HTTPException(status_code=404, detail=f"Scenario {scenario_id} not found")
 
-    # Simulate pipeline execution
     start = time.monotonic()
-    time.sleep(0.002)  # Simulate ~2ms latency
+    if scenario.get("quota"):
+        outcome, failed_stage, reason = await _evaluate_quota_demo(
+            scenario["method"], scenario["params"]
+        )
+    else:
+        outcome, failed_stage, reason = _evaluate_demo(
+            scenario["method"], scenario["params"]
+        )
     latency = (time.monotonic() - start) * 1000
 
     correlation_id = f"demo_{scenario_id}_{int(time.time())}"
-
-    # Record in live pipeline stats
-    record_pipeline_event(scenario.get("failed_stage"))
-
-    # Record in audit log
+    record_pipeline_event(failed_stage)
     record_audit_event(
         correlation_id=correlation_id,
-        outcome="DENY" if scenario["outcome"] == "DENIED" else "ALLOW",
+        outcome="DENY" if outcome == "DENIED" else "ALLOW",
         method=scenario["method"],
         action=scenario["params"].get("query", scenario["params"].get("url", "")),
         latency_ms=latency,
-        stage=scenario.get("failed_stage", "Return"),
+        stage=failed_stage or "Return",
     )
 
     return DemoResult(
         scenario=scenario["name"],
-        outcome=scenario["outcome"],
-        failed_stage=scenario.get("failed_stage"),
-        reason=scenario.get("reason"),
+        outcome=outcome,
+        failed_stage=failed_stage,
+        reason=reason,
         latency_ms=round(latency, 1),
         correlation_id=correlation_id,
     )

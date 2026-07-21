@@ -98,7 +98,6 @@ export interface PolicyResponse {
   policy: Record<string, unknown>;
   hash: string;
   loaded_at: string;
-  test_results: { passed: number; failed: number };
 }
 
 export function getPolicy(): Promise<PolicyResponse> {
