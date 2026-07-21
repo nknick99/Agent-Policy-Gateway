@@ -24,6 +24,7 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from agent_policy_gateway.adapters.identity.shared_token import authenticate_caller
 from agent_policy_gateway.core.egress import EgressController
 from agent_policy_gateway.core.models import Decision, PolicyDocument
 from agent_policy_gateway.core.policy import (
@@ -136,6 +137,30 @@ def create_proxy_app(
         except (json.JSONDecodeError, AttributeError):
             pass
 
+        # ─── Authentication (every proxied request, constant-time) ───
+        auth_header = request.headers.get("Authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip()
+        if not authenticate_caller(token):
+            elapsed = (time.monotonic() - start) * 1000
+            _write_audit(audit_file, {
+                "correlation_id": correlation_id,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+                "outcome": "DENY",
+                "method": method_name,
+                "reason": "Authentication failed",
+                "latency_ms": round(elapsed, 2),
+                "mode": mode,
+            })
+            request_id = payload.get("id") if isinstance(payload, dict) else None
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "error": {"code": -32600, "message": "Authentication failed"},
+                },
+                status_code=401,
+            )
+
         # ─── Policy enforcement (only for tool calls) ───
         outcome = "PASS_THROUGH"
         reason = None
@@ -174,6 +199,8 @@ def create_proxy_app(
         target = f"{target_url.rstrip('/')}/{path}"
         headers = dict(request.headers)
         headers.pop("host", None)
+        # Never forward the gateway token to the target
+        headers.pop("authorization", None)
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.request(
