@@ -15,6 +15,7 @@ SECRET_PATTERNS = [
     re.compile(r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+"),   # JWT tokens
     re.compile(r"-----BEGIN (RSA |EC )?PRIVATE KEY-----"),   # PEM private keys
     re.compile(r"sk-[A-Za-z0-9]{32,}"),                     # API keys (OpenAI-style)
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),                    # US SSN
 ]
 
 _REDACTED = "[REDACTED]"
