@@ -1,4 +1,4 @@
-# Agent Policy Gateway — Production-ready Docker Compose
+# Agent Policy Gateway — Docker Compose
 # Run: docker compose up --build
 # Access: http://localhost:3000
 
@@ -13,60 +13,37 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - BACKEND_URL=http://gateway:8000
-      - AUTH_URL=http://auth:8001
-      - AGENT_URL=http://agent:8002
+      # Modular monolith: one backend serves gateway + auth + agent APIs
+      - BACKEND_URL=http://backend:8000
+      - AUTH_URL=http://backend:8000
+      - AGENT_URL=http://backend:8000
     depends_on:
-      gateway:
-        condition: service_healthy
-      auth:
+      backend:
         condition: service_healthy
     restart: unless-stopped
 
   # ─────────────────────────────────────────────
-  # Auth Service (JWT, Login, SSO-ready)
+  # Backend (Gateway + Auth + Agent — modular monolith)
   # ─────────────────────────────────────────────
-  auth:
+  backend:
     build:
       context: .
-      dockerfile: services/auth/Dockerfile
+      dockerfile: services/backend/Dockerfile
     ports:
-      - "8001:8001"
+      - "8000:8000"
     environment:
       - APG_AGENT_TOKEN=${APG_AGENT_TOKEN:-secure-production-token}
       - APG_JWT_SECRET=${APG_JWT_SECRET:-change-me-in-production}
       - APG_OPERATOR_EMAIL=${APG_OPERATOR_EMAIL:-admin@apg.dev}
       - APG_OPERATOR_PASSWORD=${APG_OPERATOR_PASSWORD:-apg-demo}
       - APG_OPERATOR_WORKSPACE=${APG_OPERATOR_WORKSPACE:-apg}
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
-      - DATABASE_URL=postgresql://apg:apg@postgres:5432/apg
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
-      interval: 10s
-      timeout: 3s
-      start_period: 10s
-      retries: 3
-    restart: unless-stopped
-
-  # ─────────────────────────────────────────────
-  # Gateway (Policy Enforcement Core)
-  # ─────────────────────────────────────────────
-  gateway:
-    build:
-      context: .
-      dockerfile: services/gateway/Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - APG_AGENT_TOKEN=${APG_AGENT_TOKEN:-secure-production-token}
-      - APG_JWT_SECRET=${APG_JWT_SECRET:-change-me-in-production}
       - AWS_ENDPOINT_URL=http://floci:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=us-east-1
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
       - DATABASE_URL=postgresql://apg:apg@postgres:5432/apg
     depends_on:
@@ -79,33 +56,6 @@ services:
       interval: 10s
       timeout: 3s
       start_period: 10s
-      retries: 3
-    restart: unless-stopped
-
-  # ─────────────────────────────────────────────
-  # Agent Service (LLM Provider + Demo Scenarios)
-  # ─────────────────────────────────────────────
-  agent:
-    build:
-      context: .
-      dockerfile: services/agent/Dockerfile
-    ports:
-      - "8002:8002"
-    environment:
-      - APG_AGENT_TOKEN=${APG_AGENT_TOKEN:-secure-production-token}
-      - APG_JWT_SECRET=${APG_JWT_SECRET:-change-me-in-production}
-      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - CORS_ORIGINS=http://localhost:3000,http://frontend:3000
-    depends_on:
-      gateway:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
-      interval: 10s
-      timeout: 3s
-      start_period: 15s
       retries: 3
     restart: unless-stopped
 

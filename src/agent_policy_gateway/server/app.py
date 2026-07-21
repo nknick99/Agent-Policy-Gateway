@@ -76,7 +76,16 @@ async def lifespan(app: FastAPI):
     # Initialize remaining components
     audit_logger = AuditLogger()
     session_manager = SessionManager()
-    sts_broker = StsBroker()
+
+    # STS: Floci/LocalStack when AWS_ENDPOINT_URL is set, real AWS otherwise
+    endpoint_url = os.environ.get("AWS_ENDPOINT_URL")
+    if endpoint_url:
+        import boto3
+
+        sts_broker = StsBroker(sts_client=boto3.client("sts", endpoint_url=endpoint_url))
+    else:
+        sts_broker = StsBroker()
+
     mode_controller = ModeController()
 
     yield
@@ -84,16 +93,21 @@ async def lifespan(app: FastAPI):
 
 # --- FastAPI App ---
 
-app = FastAPI(title="Agent Policy Gateway Proxy", lifespan=lifespan)
+app = FastAPI(title="Agent Policy Gateway", lifespan=lifespan)
 
 # --- CORS (allow Next.js frontend) ---
 
+_cors_origins = os.environ.get("CORS_ORIGINS")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",  # Next.js dev server
-        os.environ.get("FRONTEND_URL", "http://localhost:3000"),
-    ],
+    allow_origins=(
+        _cors_origins.split(",")
+        if _cors_origins
+        else [
+            "http://localhost:3000",  # Next.js dev server
+            os.environ.get("FRONTEND_URL", "http://localhost:3000"),
+        ]
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,6 +117,12 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(live_demo_router)
+
+
+@app.get("/health")
+async def health():
+    """Readiness probe."""
+    return {"status": "ok", "service": "agent-policy-gateway"}
 
 
 # --- Helper Functions ---
