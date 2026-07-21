@@ -196,7 +196,12 @@ class EgressController:
         return False
 
     def _matches_whitelist(self, host: str, whitelist_entry: str) -> bool:
-        """Check if hostname matches a whitelist entry via prefix comparison.
+        """Check if hostname matches a whitelist entry.
+
+        Whitelist entries may be full URLs ("https://api.example.com"),
+        bare hostnames ("api.example.com"), or wildcard patterns
+        ("*.example.com" — matches subdomains, not the apex domain).
+        In every form, only the hostname component is compared.
 
         Args:
             host: The parsed hostname from the URL.
@@ -205,4 +210,19 @@ class EgressController:
         Returns:
             True if the hostname matches the whitelist entry.
         """
-        return host.lower() == whitelist_entry.lower()
+        host = host.lower()
+        entry = whitelist_entry.strip().lower()
+
+        if "://" in entry:
+            entry_host = urlparse(entry).hostname
+            if not entry_host:
+                return False
+            entry = entry_host
+        else:
+            # Bare entry — drop any path component
+            entry = entry.split("/", 1)[0]
+
+        if entry.startswith("*."):
+            return host.endswith(entry[1:])
+
+        return host == entry

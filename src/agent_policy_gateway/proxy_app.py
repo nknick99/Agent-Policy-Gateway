@@ -13,10 +13,8 @@ Just this + policy.json.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import re
 import time
 import uuid
 from pathlib import Path
@@ -26,112 +24,70 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from agent_policy_gateway.core.egress import EgressController
+from agent_policy_gateway.core.models import Decision, PolicyDocument
+from agent_policy_gateway.core.policy import (
+    PolicyEvaluator,
+    PolicyLoadError,
+    load_policy_document,
+)
+
 
 # ─── Default policy (deny all if no file provided) ───
 
-DEFAULT_POLICY = {
+DEFAULT_POLICY_DOCUMENT = {
     "version": 1,
     "default": "deny",
+    "caller_auth": {"method": "shared_token"},
+    "session_limits": {},
     "tools": {},
 }
 
 
-# ─── Policy evaluation (standalone, no imports from main app) ───
+def build_evaluator(policy_path: str | None) -> PolicyEvaluator:
+    """Build the shared core evaluator from a policy file, or deny-all default.
 
-
-def _load_policy(policy_path: str | None) -> dict:
-    """Load policy from file or use deny-all default."""
+    Raises PolicyLoadError if a policy file exists but is invalid —
+    fail closed at startup rather than running with a policy the
+    operator didn't intend.
+    """
     if policy_path and Path(policy_path).exists():
-        return json.loads(Path(policy_path).read_text())
-    return DEFAULT_POLICY
+        return PolicyEvaluator.from_document(load_policy_document(policy_path))
+    return PolicyEvaluator.from_document(
+        PolicyDocument.model_validate(DEFAULT_POLICY_DOCUMENT)
+    )
 
 
 def evaluate_request(
     method: str,
     params: dict,
-    policy: dict | None = None,
+    evaluator: PolicyEvaluator | None = None,
 ) -> dict[str, Any]:
-    """Evaluate a tools/call request against policy.
+    """Evaluate a tools/call request via the core policy engine + egress control.
+
+    This is a thin wrapper around the same PolicyEvaluator/EgressController
+    used by the full gateway — there is exactly one enforcement engine.
 
     Returns:
         {"allowed": bool, "outcome": str, "reason": str | None}
     """
-    if policy is None:
-        # Use default or load from standard location
-        policy_path = os.environ.get("APG_POLICY_PATH", "policy.json")
-        policy = _load_policy(policy_path)
+    if evaluator is None:
+        evaluator = build_evaluator(os.environ.get("APG_POLICY_PATH", "policy.json"))
 
-    # Default deny
-    tool_config = policy.get("tools", {}).get(method)
-    if tool_config is None:
-        return {
-            "allowed": False,
-            "outcome": "DENIED",
-            "reason": f"Tool '{method}' not in policy allowlist",
-        }
+    result = evaluator.evaluate(method, params)
+    if result.decision == Decision.DENY:
+        return {"allowed": False, "outcome": "DENIED", "reason": result.reason}
 
-    if not tool_config.get("allow", False):
-        return {
-            "allowed": False,
-            "outcome": "DENIED",
-            "reason": f"Tool '{method}' is explicitly denied",
-        }
-
-    # Check operations (SQL verbs)
-    allowed_ops = tool_config.get("operations", [])
-    if allowed_ops:
-        query = params.get("query", params.get("sql", ""))
-        if query:
-            verb = query.strip().split()[0].upper() if query.strip() else ""
-            if verb.lower() not in [op.lower() for op in allowed_ops]:
-                return {
-                    "allowed": False,
-                    "outcome": "DENIED",
-                    "reason": f"Operation '{verb}' not in allowed: {allowed_ops}",
-                }
-
-    # Check deny keywords
-    deny_keywords = tool_config.get("deny_keywords", [])
-    for key, value in params.items():
-        if isinstance(value, str):
-            for kw in deny_keywords:
-                if kw.upper() in value.upper():
-                    return {
-                        "allowed": False,
-                        "outcome": "DENIED",
-                        "reason": f"Keyword '{kw}' found in parameter '{key}'",
-                    }
-
-    # Check egress (URL destinations)
-    url = params.get("url", params.get("destination", ""))
-    if url:
-        deny_dests = tool_config.get("deny_destinations", [])
-        for deny in deny_dests:
-            if deny in url:
-                return {
-                    "allowed": False,
-                    "outcome": "DENIED",
-                    "reason": f"Destination '{deny}' is blocked by egress policy",
-                }
-
-        # Whitelist check (if whitelist is non-empty, URL must match)
-        whitelist = tool_config.get("destination_whitelist", [])
-        if whitelist:
-            matched = False
-            for allowed in whitelist:
-                if allowed.startswith("*"):
-                    if url.endswith(allowed[1:]):
-                        matched = True
-                        break
-                elif allowed in url:
-                    matched = True
-                    break
-            if not matched:
-                return {
-                    "allowed": False,
-                    "outcome": "DENIED",
-                    "reason": f"Destination not in approved whitelist",
-                }
+    # Egress control for tools that reach out to a destination
+    destination = params.get("url") or params.get("destination")
+    if destination and result.tool_config is not None:
+        egress_result = EgressController(result.tool_config).check(destination)
+        if not egress_result.allowed:
+            return {
+                "allowed": False,
+                "outcome": "DENIED",
+                "reason": f"Egress denied: {egress_result.reason}",
+            }
 
     return {"allowed": True, "outcome": "ALLOWED", "reason": None}
 
@@ -147,7 +103,7 @@ def create_proxy_app(
 ) -> FastAPI:
     """Create a transparent MCP proxy with policy enforcement."""
 
-    policy = _load_policy(policy_path)
+    evaluator = build_evaluator(policy_path)
     app = FastAPI(title="Agent Policy Gateway Proxy", docs_url=None, redoc_url=None)
 
     @app.get("/health")
@@ -187,7 +143,7 @@ def create_proxy_app(
         reason = None
 
         if is_tool_call and method_name:
-            result = evaluate_request(method_name, params, policy)
+            result = evaluate_request(method_name, params, evaluator)
 
             if not result["allowed"] and mode == "enforce":
                 # DENIED — don't forward to target

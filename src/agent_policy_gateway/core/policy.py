@@ -22,6 +22,39 @@ from agent_policy_gateway.core.models import Decision, PolicyDocument, ToolConfi
 logger = logging.getLogger(__name__)
 
 
+class PolicyLoadError(Exception):
+    """Raised when a policy file cannot be loaded or validated."""
+
+
+def load_policy_document(policy_path: str) -> PolicyDocument:
+    """Load and validate a policy file into an immutable PolicyDocument.
+
+    Raises PolicyLoadError on any failure — callers decide whether to
+    terminate (gateway startup) or handle the error (CLI tooling,
+    embedded use).
+    """
+    path = Path(policy_path)
+
+    if not path.exists():
+        raise PolicyLoadError(f"Policy file not found: {policy_path}")
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except (json.JSONDecodeError, OSError) as exc:
+        raise PolicyLoadError(f"Failed to parse policy file: {exc}") from exc
+
+    try:
+        policy = PolicyDocument.model_validate(data)
+    except ValidationError as exc:
+        raise PolicyLoadError(f"Policy validation failed: {exc}") from exc
+
+    if policy.default != "deny":
+        raise PolicyLoadError(f"Policy default must be 'deny', got '{policy.default}'")
+
+    return policy
+
+
 @dataclass(frozen=True)
 class PolicyResult:
     """Immutable result of a policy evaluation.
@@ -54,47 +87,29 @@ class PolicyEvaluator:
         - The policy file is missing or unparseable (Requirement 10.2)
         - The default field is not "deny" (Requirement 10.3)
         """
-        path = Path(policy_path)
-
-        # Requirement 10.2: Missing policy file → terminate
-        if not path.exists():
-            print(
-                f"FATAL: Policy file not found: {policy_path}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
         try:
-            raw = path.read_text(encoding="utf-8")
-            data = json.loads(raw)
-        except (json.JSONDecodeError, OSError) as exc:
-            # Requirement 10.2: Unparseable policy file → terminate
-            print(
-                f"FATAL: Failed to parse policy file: {exc}",
-                file=sys.stderr,
-            )
+            policy = load_policy_document(policy_path)
+        except PolicyLoadError as exc:
+            print(f"FATAL: {exc}", file=sys.stderr)
             sys.exit(1)
 
-        # Validate via Pydantic model
-        try:
-            policy = PolicyDocument.model_validate(data)
-        except ValidationError as exc:
-            print(
-                f"FATAL: Policy validation failed: {exc}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        self._bind_policy(policy)
 
-        # Requirement 10.3: default must be "deny"
-        if policy.default != "deny":
-            print(
-                f"FATAL: Policy default must be 'deny', got '{policy.default}'",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    @classmethod
+    def from_document(cls, policy: PolicyDocument) -> PolicyEvaluator:
+        """Build an evaluator from an already-validated PolicyDocument.
 
+        Unlike __init__, this never touches the filesystem and never calls
+        sys.exit — for embedded use (proxy, demos, tests).
+        """
+        self = cls.__new__(cls)
+        self._bind_policy(policy)
+        return self
+
+    def _bind_policy(self, policy: PolicyDocument) -> None:
+        """Freeze the validated policy into read-only evaluator state."""
         # Requirement 11.1: Store as frozen read-only structure
-        # Store the validated policy document (Pydantic model is immutable by config)
+        # (Pydantic model is immutable by config)
         self._policy: PolicyDocument = policy
 
         # Create a frozen mapping of tool names for O(1) lookup

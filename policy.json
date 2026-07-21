@@ -32,6 +32,17 @@
         ]
       }
     },
+    "http.get": {
+      "allow": true,
+      "operations": ["GET"],
+      "tables": [],
+      "constraints": {},
+      "deny_keywords": [],
+      "destination_whitelist": ["https://api.example.com", "https://hooks.slack.com"],
+      "deny_destinations": ["169.254.169.254", "metadata.google.internal"],
+      "aws_role": "",
+      "session_policy": {}
+    },
     "http.post": {
       "allow": true,
       "operations": ["POST"],

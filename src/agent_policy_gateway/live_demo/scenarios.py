@@ -12,13 +12,22 @@ The flow for each:
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_policy_gateway.core.egress import EgressController
+from agent_policy_gateway.core.models import Decision, PolicyDocument
+from agent_policy_gateway.core.policy import (
+    PolicyEvaluator,
+    PolicyLoadError,
+    load_policy_document,
+)
 from agent_policy_gateway.live_demo.database import execute_query
 from agent_policy_gateway.live_demo.llm_provider import LLMProvider, get_provider
+from agent_policy_gateway.proxy_app import DEFAULT_POLICY_DOCUMENT
 
 
 @dataclass
@@ -46,48 +55,70 @@ class ScenarioResult:
     llm_provider: str = "mock"
 
 
-# --- Policy rules (mirrors policy.json) ---
+# --- Policy enforcement (the real engine — same one the gateway uses) ---
 
-ALLOWED_OPERATIONS = ["select"]
-DENY_KEYWORDS = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"]
-ALLOWED_DESTINATIONS = ["https://api.example.com", "https://hooks.slack.com", "*.amazonaws.com"]
-DENY_DESTINATIONS = ["169.254.169.254", "metadata.google.internal"]
 REDACT_FIELDS = ["ssn", "password", "secret", "token", "key_hash"]
+
+_evaluator: PolicyEvaluator | None = None
+
+
+def _get_evaluator() -> PolicyEvaluator:
+    """Load the shared policy engine once, from the same policy.json the
+    gateway enforces. Fail closed: no valid policy file → deny-all."""
+    global _evaluator
+    if _evaluator is None:
+        path = os.environ.get("APG_POLICY_PATH", "policy.json")
+        try:
+            _evaluator = PolicyEvaluator.from_document(load_policy_document(path))
+        except PolicyLoadError:
+            _evaluator = PolicyEvaluator.from_document(
+                PolicyDocument.model_validate(DEFAULT_POLICY_DOCUMENT)
+            )
+    return _evaluator
 
 
 def _check_sql_policy(sql: str) -> tuple[bool, str]:
-    """Check if a SQL query is allowed by policy."""
-    sql_upper = sql.upper().strip()
-
-    # Check operation type
-    verb = sql_upper.split()[0] if sql_upper else ""
-    if verb.lower() not in ALLOWED_OPERATIONS:
-        return False, f"Operation '{verb}' not in allowed operations: {ALLOWED_OPERATIONS}"
-
-    # Check deny keywords
-    for kw in DENY_KEYWORDS:
-        if kw in sql_upper:
-            return False, f"Keyword '{kw}' is in deny list"
-
-    return True, "Query matches allowed policy"
+    """Evaluate a SQL action through the real policy engine."""
+    result = _get_evaluator().evaluate("db.query", {"query": sql})
+    return result.decision == Decision.ALLOW, result.reason
 
 
-def _check_egress(url: str) -> tuple[bool, str]:
-    """Check if a destination URL is allowed by egress policy."""
-    for deny in DENY_DESTINATIONS:
-        if deny in url:
-            return False, f"Destination '{deny}' is in egress deny list"
+def _run_egress_stages(
+    method: str, url: str, pipeline: list[PipelineStage]
+) -> tuple[bool, str | None, str | None]:
+    """Run real policy evaluation + egress control, appending pipeline stages.
 
-    # Check if destination is in allowed list
-    for allowed in ALLOWED_DESTINATIONS:
-        if allowed.startswith("*"):
-            suffix = allowed[1:]  # e.g., ".amazonaws.com"
-            if url.endswith(suffix) or suffix[1:] in url:
-                return True, f"Matches allowed pattern: {allowed}"
-        elif allowed in url:
-            return True, f"Matches allowed destination: {allowed}"
+    Returns (allowed, denied_at, denial_reason).
+    """
+    t0 = time.monotonic()
+    result = _get_evaluator().evaluate(method, {"url": url})
+    policy_passed = result.decision == Decision.ALLOW
+    pipeline.append(PipelineStage(
+        name="Policy Eval",
+        passed=policy_passed,
+        detail=result.reason,
+        duration_ms=(time.monotonic() - t0) * 1000,
+    ))
 
-    return False, f"Destination not in approved list"
+    if not policy_passed:
+        pipeline.append(PipelineStage(
+            name="Egress Ctrl", passed=False, detail="Skipped (pipeline halted)"
+        ))
+        return False, "Policy Eval", result.reason
+
+    t0 = time.monotonic()
+    egress_result = EgressController(result.tool_config or {}).check(url)
+    pipeline.append(PipelineStage(
+        name="Egress Ctrl",
+        passed=egress_result.allowed,
+        detail=egress_result.reason,
+        duration_ms=(time.monotonic() - t0) * 1000,
+    ))
+
+    if not egress_result.allowed:
+        return False, "Egress Ctrl", egress_result.reason
+
+    return True, None, None
 
 
 def _filter_response(rows: list[dict]) -> list[dict]:
@@ -350,17 +381,9 @@ async def _scenario_ssrf_attempt(
 
     pipeline.append(PipelineStage(name="Auth", passed=True, detail="Bearer token verified"))
     pipeline.append(PipelineStage(name="Schema", passed=True, detail="Valid HTTP request"))
-    pipeline.append(PipelineStage(name="Policy Eval", passed=True, detail="http.get is an allowed tool"))
 
-    # Egress control — metadata endpoint is blocked
-    t0 = time.monotonic()
-    allowed, reason = _check_egress(url)
-    pipeline.append(PipelineStage(
-        name="Egress Ctrl",
-        passed=False,
-        detail=reason,
-        duration_ms=(time.monotonic() - t0) * 1000,
-    ))
+    # Real policy evaluation + egress control (metadata endpoint is blocked)
+    allowed, denied_at, reason = _run_egress_stages("http.get", url, pipeline)
 
     # Pipeline stops here
     pipeline.append(PipelineStage(name="Execute", passed=False, detail="Not executed"))
@@ -374,8 +397,8 @@ async def _scenario_ssrf_attempt(
         "is in the deny list. This prevents Server-Side Request Forgery attacks.",
         agent_intent="Access cloud metadata for IAM credentials",
         agent_action=f"HTTP GET {url}",
-        outcome="DENIED",
-        denied_at="Egress Ctrl",
+        outcome="DENIED" if not allowed else "ALLOWED",
+        denied_at=denied_at,
         denial_reason=reason,
         pipeline=pipeline,
         total_latency_ms=(time.monotonic() - start) * 1000,
@@ -408,17 +431,9 @@ async def _scenario_exfiltrate_data(
 
     pipeline.append(PipelineStage(name="Auth", passed=True, detail="Bearer token verified"))
     pipeline.append(PipelineStage(name="Schema", passed=True, detail="Valid HTTP request"))
-    pipeline.append(PipelineStage(name="Policy Eval", passed=True, detail="http.post is an allowed tool"))
 
-    # Egress control — attacker.com is not in allowed destinations
-    t0 = time.monotonic()
-    allowed, reason = _check_egress(url)
-    pipeline.append(PipelineStage(
-        name="Egress Ctrl",
-        passed=False,
-        detail=reason,
-        duration_ms=(time.monotonic() - t0) * 1000,
-    ))
+    # Real policy evaluation + egress control (attacker.com not whitelisted)
+    allowed, denied_at, reason = _run_egress_stages("http.post", url, pipeline)
 
     # Pipeline stops
     pipeline.append(PipelineStage(name="Execute", passed=False, detail="Not executed"))
@@ -432,8 +447,8 @@ async def _scenario_exfiltrate_data(
         "this — only pre-approved destinations are allowed. Zero data leaves the system.",
         agent_intent="Exfiltrate customer PII to external endpoint",
         agent_action=f"HTTP POST {url} (with customer records)",
-        outcome="DENIED",
-        denied_at="Egress Ctrl",
+        outcome="DENIED" if not allowed else "ALLOWED",
+        denied_at=denied_at,
         denial_reason=reason,
         pipeline=pipeline,
         total_latency_ms=(time.monotonic() - start) * 1000,
