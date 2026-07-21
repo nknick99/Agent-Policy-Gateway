@@ -59,33 +59,32 @@ quota check → credential mint → execute action → filter response → audit
 
 ---
 
-## Microservices
+## Services
+
+A modular monolith (see `docs/adr/001-modular-monolith.md`): one backend
+process serves the gateway, auth, and demo APIs.
 
 | Service | Port | Responsibility |
 |---------|------|----------------|
 | **Frontend** (Next.js) | 3000 | Dashboard UI — login, pipeline visualization, demos |
-| **Auth** (FastAPI) | 8001 | JWT authentication, pluggable SSO providers |
-| **Gateway** (FastAPI) | 8000 | Policy enforcement, STS mint, egress control, audit |
-| **Agent** (FastAPI) | 8002 | LLM provider abstraction, demo scenarios |
+| **Backend** (FastAPI) | 8000 | Policy enforcement, STS mint, egress control, audit, JWT auth, demo scenarios |
 | **PostgreSQL** | 5432 | Audit logs, user accounts |
 | **Floci** (AWS emulator) | 4566 | STS credential minting (dev); real AWS in prod |
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   Docker / Kubernetes                     │
-│                                                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
-│  │ Frontend │  │   Auth   │  │ Gateway  │  │ Agent  │ │
-│  │  :3000   │  │  :8001   │  │  :8000   │  │ :8002  │ │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └───┬────┘ │
-│       │              │              │             │       │
-│       └──────────────┼──────────────┼─────────────┘       │
-│                      │              │                     │
-│              ┌───────▼──────┐  ┌────▼─────┐             │
-│              │  PostgreSQL  │  │  Floci   │             │
-│              │    :5432     │  │  :4566   │             │
-│              └──────────────┘  └──────────┘             │
-└─────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────┐
+│               Docker Compose                │
+│                                             │
+│  ┌──────────┐        ┌──────────────────┐  │
+│  │ Frontend │───────▶│     Backend      │  │
+│  │  :3000   │        │      :8000       │  │
+│  └──────────┘        └───┬──────────┬───┘  │
+│                          │          │      │
+│                  ┌───────▼────┐ ┌───▼───┐  │
+│                  │ PostgreSQL │ │ Floci │  │
+│                  │   :5432    │ │ :4566 │  │
+│                  └────────────┘ └───────┘  │
+└────────────────────────────────────────────┘
 ```
 
 ---
@@ -206,25 +205,19 @@ Production: remove `AWS_ENDPOINT_URL` from gateway env to use real AWS STS inste
 
 ```
 Agent-Policy-Gateway/
+├── Makefile                        # dev / test / lint / check / run
 ├── docker-compose.yml              # docker compose up --build
-├── deploy.ps1                      # build / push / deploy
 ├── policy.json                     # immutable policy (source of truth)
 ├── pyproject.toml                  # Python package config
 │
 ├── services/                       # Docker build contexts
-│   ├── gateway/Dockerfile
-│   ├── auth/Dockerfile
-│   ├── agent/Dockerfile
+│   ├── backend/Dockerfile          # single backend image (main:app)
 │   ├── frontend/Dockerfile
 │   └── postgres/init.sql
 │
-├── k8s/                            # Kubernetes manifests
-│   ├── namespace.yaml
-│   ├── secrets.yaml
-│   ├── gateway-deployment.yaml     # 3 replicas + HPA
-│   ├── auth-deployment.yaml
-│   ├── frontend-deployment.yaml
-│   └── ingress.yaml                # NGINX + TLS
+├── k8s/                            # Kubernetes manifests (stale — see k8s/README.md)
+│
+├── docs/adr/                       # Architecture decision records
 │
 ├── frontend/                       # Next.js 14 dashboard
 │   └── src/
@@ -232,21 +225,26 @@ Agent-Policy-Gateway/
 │       ├── components/             # Sidebar, shared UI
 │       └── lib/                    # API client, auth helpers
 │
-├── src/agent_policy_gateway/       # Python source
-│   ├── main.py                     # Monolith app (dev mode)
-│   ├── cli.py                      # CLI entry point (apg command)
-│   ├── proxy_app.py                # Standalone transparent proxy
-│   ├── services/                   # Microservice entry points
-│   ├── auth_service/               # JWT + pluggable providers
+├── src/agent_policy_gateway/       # Python source (modular monolith, ADR-001)
+│   ├── core/                       # pure domain — no infrastructure imports
+│   │   ├── policy.py               # deterministic policy evaluator (the one engine)
+│   │   ├── egress.py               # egress control
+│   │   ├── filter.py               # response PII redaction
+│   │   ├── session.py              # quota management
+│   │   ├── mode.py                 # enforce/audit mode control
+│   │   ├── models.py               # frozen Pydantic policy models
+│   │   └── schemas.py              # JSON-RPC envelope validation
+│   ├── adapters/                   # replaceable infrastructure
+│   │   ├── brokers/aws_sts.py      # STS credential minting
+│   │   ├── identity/shared_token.py# agent caller auth
+│   │   └── audit/stdout.py         # structured audit sink
+│   ├── server/app.py               # FastAPI wiring (all routers + /rpc)
+│   ├── main.py                     # uvicorn entry point shim
+│   ├── cli.py                      # apg CLI (proxy / demo / init / policy validate)
+│   ├── proxy_app.py                # standalone transparent proxy
+│   ├── auth_service/               # operator JWT + pluggable providers
 │   ├── dashboard_api/              # REST API for frontend
-│   ├── live_demo/                  # LLM providers + demo scenarios
-│   ├── policy.py                   # Deterministic policy evaluator
-│   ├── sts_broker.py               # AWS STS credential minting
-│   ├── egress.py                   # Egress control
-│   ├── filter.py                   # Response PII redaction
-│   ├── audit.py                    # Append-only audit logger
-│   ├── session.py                  # Quota management
-│   └── mode.py                     # Enforce/Audit mode control
+│   └── live_demo/                  # LLM providers + demo scenarios
 │
 └── tests/                          # pytest test suite
 ```
