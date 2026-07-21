@@ -11,13 +11,13 @@ That's it. One command, your MCP server is now policy-protected.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
 import time
-import hashlib
-import re
 from pathlib import Path
+from typing import Any
 
 
 def main():
@@ -71,6 +71,23 @@ def main():
         help="Run an interactive demo showing Agent Policy Gateway enforcement",
     )
 
+    # --- policy command ---
+    policy_parser = subparsers.add_parser(
+        "policy",
+        help="Policy tooling (validate)",
+    )
+    policy_parser.add_argument(
+        "action",
+        choices=["validate"],
+        help="validate: check a policy file loads, validates, and is default-deny",
+    )
+    policy_parser.add_argument(
+        "path",
+        nargs="?",
+        default="policy.json",
+        help="Path to the policy file (default: ./policy.json)",
+    )
+
     # --- init command ---
     init_parser = subparsers.add_parser(
         "init",
@@ -90,9 +107,30 @@ def main():
         _run_demo()
     elif args.command == "init":
         _run_init(args)
+    elif args.command == "policy":
+        _run_policy(args)
     else:
         parser.print_help()
         sys.exit(1)
+
+
+def _run_policy(args):
+    """Policy tooling — currently: validate."""
+    from agent_policy_gateway.core.policy import PolicyLoadError, load_policy_document
+
+    try:
+        policy = load_policy_document(args.path)
+    except PolicyLoadError as exc:
+        print(f"INVALID: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"OK: {args.path}")
+    print(f"  version:  {policy.version}")
+    print(f"  default:  {policy.default}")
+    print(f"  tools:    {len(policy.tools)} ({', '.join(sorted(policy.tools))})")
+    for name, tool in sorted(policy.tools.items()):
+        status = "allow" if tool.allow else "deny"
+        print(f"    - {name}: {status}")
 
 
 def _run_proxy(args):
@@ -112,8 +150,8 @@ def _run_proxy(args):
     policy_path = Path(args.policy)
     if not policy_path.exists():
         print(f"  Policy file not found: {args.policy}")
-        print(f"  Run 'apg init' to generate a starter policy")
-        print(f"  Or Agent Policy Gateway will use default deny-all policy")
+        print("  Run 'apg init' to generate a starter policy")
+        print("  Or Agent Policy Gateway will use default deny-all policy")
         print()
 
     os.environ["APG_TARGET_URL"] = args.target
@@ -136,6 +174,7 @@ def _run_proxy(args):
     print()
 
     import uvicorn
+
     from agent_policy_gateway.proxy_app import create_proxy_app
 
     app = create_proxy_app(
@@ -159,7 +198,7 @@ def _run_demo():
     # Inline demo — no server needed
     from agent_policy_gateway.proxy_app import evaluate_request
 
-    scenarios = [
+    scenarios: list[dict[str, Any]] = [
         {
             "name": "Valid SELECT Query",
             "method": "db.query",

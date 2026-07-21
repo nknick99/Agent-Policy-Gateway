@@ -10,8 +10,8 @@ existing audit entries (Requirement 9.7).
 from __future__ import annotations
 
 import uuid
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -50,7 +50,7 @@ class AuditEvent:
 
     correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+        default_factory=lambda: datetime.now(UTC).isoformat()
     )
     caller_identity: str = ""
     method: str = ""

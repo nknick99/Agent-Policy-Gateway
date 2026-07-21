@@ -7,8 +7,6 @@ tries to access through Agent Policy Gateway's policy gateway.
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
-
 
 _DB_PATH = ":memory:"
 _conn: sqlite3.Connection | None = None
@@ -93,7 +91,7 @@ def execute_query(sql: str) -> list[dict]:
     cursor = conn.execute(sql)
     columns = [desc[0] for desc in cursor.description] if cursor.description else []
     rows = cursor.fetchall()
-    return [dict(zip(columns, row)) for row in rows]
+    return [dict(zip(columns, row, strict=False)) for row in rows]
 
 
 def reset_database() -> None:

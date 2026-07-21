@@ -7,7 +7,11 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_policy_gateway.adapters.identity.shared_token import _TOKEN_ENV_VAR, authenticate_caller, validate_startup
+from agent_policy_gateway.adapters.identity.shared_token import (
+    _TOKEN_ENV_VAR,
+    authenticate_caller,
+    validate_startup,
+)
 
 
 class TestAuthenticateCaller:

@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from ipaddress import AddressValueError, ip_address, ip_network
 from urllib.parse import urlparse
 
-
 # Link-local network range used by cloud metadata services
 _LINK_LOCAL_NETWORK = ip_network("169.254.0.0/16")
 

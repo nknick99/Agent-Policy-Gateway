@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_policy_gateway.adapters.brokers.aws_sts import CredentialMintError, JitCredentials, StsBroker
-
+from agent_policy_gateway.adapters.brokers.aws_sts import (
+    CredentialMintError,
+    JitCredentials,
+    StsBroker,
+)
 
 # --- Fixtures ---
 
@@ -22,7 +25,7 @@ def mock_sts_client():
             "AccessKeyId": "AKIAIOSFODNN7EXAMPLE",
             "SecretAccessKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
             "SessionToken": "FwoGZXIvYXdzEBYaDHqa0AP1",
-            "Expiration": datetime(2025, 1, 1, 0, 15, 0, tzinfo=timezone.utc),
+            "Expiration": datetime(2025, 1, 1, 0, 15, 0, tzinfo=UTC),
         },
         "AssumedRoleUser": {
             "AssumedRoleId": "AROA3XFRBF23:apg-abc123",
@@ -361,7 +364,7 @@ class TestLazyClientCreation:
                 "AccessKeyId": "AKIATEST",
                 "SecretAccessKey": "secret",
                 "SessionToken": "token",
-                "Expiration": datetime(2025, 1, 1, tzinfo=timezone.utc),
+                "Expiration": datetime(2025, 1, 1, tzinfo=UTC),
             }
         }
         mock_boto3_client.return_value = mock_client

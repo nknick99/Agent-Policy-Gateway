@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -328,7 +326,7 @@ class TestCorrelationAndAudit:
             mock_audit.generate_correlation_id.return_value = "test-corr-id"
             mock_audit.emit = MagicMock()
 
-            response = client.post(
+            client.post(
                 "/rpc",
                 content=json.dumps(_rpc_payload()).encode(),
                 headers={
@@ -345,7 +343,7 @@ class TestCorrelationAndAudit:
             mock_audit.generate_correlation_id.return_value = "test-corr-id"
             mock_audit.emit = MagicMock()
 
-            response = client.post(
+            client.post(
                 "/rpc",
                 content=b"bad json",
                 headers={

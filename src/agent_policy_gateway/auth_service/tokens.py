@@ -16,7 +16,6 @@ import os
 import time
 from typing import Any
 
-
 # Default token TTL: 1 hour
 DEFAULT_TTL_SECONDS = 3600
 

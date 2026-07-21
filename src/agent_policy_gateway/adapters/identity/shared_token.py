@@ -11,7 +11,6 @@ import hmac
 import os
 import sys
 
-
 # Environment variable that holds the expected agent token
 _TOKEN_ENV_VAR = "APG_AGENT_TOKEN"
 

@@ -9,8 +9,8 @@ The service issues short-lived JWTs for operator access to the console.
 """
 
 from agent_policy_gateway.auth_service.provider import AuthProvider, LocalAuthProvider
-from agent_policy_gateway.auth_service.tokens import create_token, verify_token
 from agent_policy_gateway.auth_service.router import router as auth_router
+from agent_policy_gateway.auth_service.tokens import create_token, verify_token
 
 __all__ = [
     "AuthProvider",

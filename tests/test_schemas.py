@@ -12,7 +12,6 @@ from agent_policy_gateway.core.schemas import (
     ToolCallPayload,
 )
 
-
 # --- JsonRpcRequest Tests ---
 
 

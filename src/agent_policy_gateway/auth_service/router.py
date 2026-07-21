@@ -8,7 +8,7 @@ Exposes /api/auth/* endpoints. This module can be:
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from agent_policy_gateway.auth_service.provider import LocalAuthProvider, UserInfo

@@ -11,8 +11,7 @@ import pytest
 from pydantic import ValidationError
 
 from agent_policy_gateway.core.models import Decision
-from agent_policy_gateway.core.policy import PolicyEvaluator, PolicyResult
-
+from agent_policy_gateway.core.policy import PolicyEvaluator
 
 # --- Fixtures ---
 

@@ -5,7 +5,6 @@ them to the AI agent. Detected patterns are replaced with "[REDACTED]".
 The original result object is never mutated.
 """
 
-import copy
 import re
 from typing import Any
 

@@ -10,9 +10,9 @@ from pydantic import BaseModel
 
 from agent_policy_gateway.auth_service.tokens import verify_token
 from agent_policy_gateway.dashboard_api.router import record_audit_event, record_pipeline_event
-from agent_policy_gateway.live_demo.llm_provider import get_provider
-from agent_policy_gateway.live_demo.scenarios import run_scenario, ScenarioResult
 from agent_policy_gateway.live_demo.database import reset_database
+from agent_policy_gateway.live_demo.llm_provider import get_provider
+from agent_policy_gateway.live_demo.scenarios import run_scenario
 
 router = APIRouter(prefix="/api/live-demo", tags=["live-demo"])
 

@@ -6,8 +6,6 @@ decision-specific fields, exception safety, and immutability.
 
 import json
 import uuid
-from io import StringIO
-from unittest.mock import patch
 
 import pytest
 
@@ -187,7 +185,6 @@ class TestEmitExceptionSafety:
         # Create event where _build_event_data will fail
         event = AuditEvent(correlation_id="partial-test")
         # Monkey-patch to force failure in _build_event_data
-        original = logger._build_event_data
         def fail_build(e):
             raise RuntimeError("simulated failure")
         logger._build_event_data = fail_build
@@ -235,7 +232,7 @@ class TestExactlyOneEventPerRequest:
         )
         logger.emit(event)
         captured = capsys.readouterr()
-        lines = [l for l in captured.out.strip().split("\n") if l.strip()]
+        lines = [line for line in captured.out.strip().split("\n") if line.strip()]
         assert len(lines) == 1
 
 

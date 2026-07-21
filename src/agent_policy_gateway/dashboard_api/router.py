@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel
 
 from agent_policy_gateway.auth_service.tokens import verify_token
@@ -238,7 +238,7 @@ async def get_audit_events(
 
 # --- Demo Scenarios ---
 
-_DEMO_SCENARIOS = [
+_DEMO_SCENARIOS: list[dict[str, Any]] = [
     {
         "id": 1,
         "name": "Valid SELECT Query",

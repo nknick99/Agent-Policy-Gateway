@@ -1,6 +1,6 @@
 """Tests for Agent Policy Gateway data models and shared types."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -15,7 +15,6 @@ from agent_policy_gateway.core.models import (
     SessionState,
     ToolConfig,
 )
-
 
 # --- Enum Tests ---
 
@@ -164,7 +163,7 @@ class TestSessionState:
         assert state.session_id == "sess-1"
         assert state.caller_identity == "agent-1"
         assert isinstance(state.created_at, datetime)
-        assert state.created_at.tzinfo == timezone.utc
+        assert state.created_at.tzinfo == UTC
 
     def test_increment_calls(self):
         state = SessionState(session_id="s", caller_identity="a")

@@ -16,7 +16,6 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 from agent_policy_gateway.core.egress import EgressController
 from agent_policy_gateway.core.models import Decision, PolicyDocument
@@ -158,7 +157,7 @@ def _extract_sql(text: str) -> str | None:
             sql = sql.rstrip(";").strip()
             # If multi-line, take just the first statement
             if "\n" in sql:
-                lines = [l.strip() for l in sql.split("\n") if l.strip()]
+                lines = [part.strip() for part in sql.split("\n") if part.strip()]
                 sql = " ".join(lines)
             return sql
     return None

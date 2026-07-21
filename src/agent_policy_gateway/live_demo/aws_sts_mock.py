@@ -15,9 +15,9 @@ from __future__ import annotations
 import hashlib
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
 router = APIRouter(tags=["aws-sts-mock"])
@@ -33,7 +33,7 @@ def _generate_credentials(role_arn: str, session_name: str, duration: int = 900)
     secret_key = h[:40]
     session_token = f"FwoGZXIvYXdzE{h}"
 
-    expiration = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    expiration = datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
     return {
         "access_key_id": access_key,

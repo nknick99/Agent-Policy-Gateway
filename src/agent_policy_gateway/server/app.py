@@ -24,10 +24,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from agent_policy_gateway.adapters.audit.stdout import AuditEvent, AuditLogger, redact_params
-from agent_policy_gateway.adapters.identity.shared_token import authenticate_caller, validate_startup
+from agent_policy_gateway.adapters.brokers.aws_sts import CredentialMintError, StsBroker
+from agent_policy_gateway.adapters.identity.shared_token import (
+    authenticate_caller,
+    validate_startup,
+)
 from agent_policy_gateway.auth_service import auth_router
-from agent_policy_gateway.dashboard_api import dashboard_router
-from agent_policy_gateway.live_demo.router import router as live_demo_router
 from agent_policy_gateway.core.egress import EgressController
 from agent_policy_gateway.core.filter import filter_response
 from agent_policy_gateway.core.mode import ModeController
@@ -39,7 +41,8 @@ from agent_policy_gateway.core.schemas import (
     validate_params,
 )
 from agent_policy_gateway.core.session import SessionManager
-from agent_policy_gateway.adapters.brokers.aws_sts import CredentialMintError, StsBroker
+from agent_policy_gateway.dashboard_api import dashboard_router
+from agent_policy_gateway.live_demo.router import router as live_demo_router
 
 logger = logging.getLogger(__name__)
 

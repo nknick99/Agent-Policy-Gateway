@@ -102,7 +102,7 @@ class StsBroker:
             )
         except Exception:
             # Catch all STS/boto errors — never leak AWS details
-            raise CredentialMintError("Credential minting failed")
+            raise CredentialMintError("Credential minting failed") from None
 
         credentials = response["Credentials"]
         return JitCredentials(

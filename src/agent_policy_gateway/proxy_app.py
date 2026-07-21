@@ -28,10 +28,8 @@ from agent_policy_gateway.core.egress import EgressController
 from agent_policy_gateway.core.models import Decision, PolicyDocument
 from agent_policy_gateway.core.policy import (
     PolicyEvaluator,
-    PolicyLoadError,
     load_policy_document,
 )
-
 
 # ─── Default policy (deny all if no file provided) ───
 
