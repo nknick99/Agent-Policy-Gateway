@@ -18,7 +18,7 @@ Deterministic policy enforcement gateway that sits between AI agents and target 
                 │                     │
                 │  Auth → Schema →    │
                 │  Policy → Egress →  │     policy.json (immutable)
-                │  Quota → STS Mint → │
+                │  Quota → Mint(opt)→ │
                 │  Execute → Filter → │
                 │  Audit              │
                 └──────────┬──────────┘
@@ -39,21 +39,26 @@ quota check → credential mint → execute action → filter response → audit
 ```
 
 1. **Authentication** — Bearer token verified via HMAC constant-time comparison
-2. **Schema validation** — JSON-RPC 2.0 envelope structure check
+2. **Schema validation** — JSON-RPC 2.0 envelope structure check (tools themselves are validated by policy, not a fixed registry)
 3. **Policy evaluation** — tool allowed? operation permitted? keywords blocked?
 4. **Egress control** — destination in allowlist? not in deny list?
 5. **Quota check** — within per-session rate limits?
-6. **STS mint** — short-lived AWS credentials scoped to one action (15min TTL)
-7. **Execute** — action performed with scoped credentials
+6. **Credential mint** — optional: `credential_broker: none` (default) or `aws_sts` for short-lived per-action AWS credentials (15min TTL)
+7. **Execute** — action forwarded to the real target (per-tool `target_url` or `APG_TARGET_URL`); fails closed if no target is configured
 8. **Response filter** — redact secrets/PII (SSN, AWS keys, JWTs, private keys)
-9. **Credential discard** — memory zeroed immediately
+9. **Credential discard** — memory zeroed immediately (when a broker minted credentials)
 10. **Audit** — append-only structured log with correlation ID
+
+The pipeline is a single implementation (`core/pipeline.py`) with injected
+ports for execution, credential brokering, and audit. The `/rpc` endpoint,
+the CLI proxy, and the live demo all run through it — there is no second
+enforcement engine (see `docs/adr/002-deterministic-policy-scope.md`).
 
 ### Zero Trust Principles
 
-- **Default deny** — nothing is allowed unless explicitly in the policy
-- **Least privilege** — STS mints credentials scoped to exactly one action
-- **No standing access** — credentials live for milliseconds, not minutes
+- **Default deny** — nothing is allowed unless explicitly in the policy; unknown tools are denied by policy, not by a hardcoded method list
+- **Least privilege** — with `aws_sts`, credentials are scoped to exactly one action
+- **No standing access** — minted credentials live for milliseconds, not minutes
 - **Assume breach** — agents hold zero secrets; compromised agent = zero escalation
 - **Full audit** — every decision logged with correlation IDs
 
@@ -114,10 +119,19 @@ cd frontend && npm install && npm run dev
 
 ```bash
 pip install -e .
-apg proxy --target http://localhost:9000 --policy policy.json
+apg proxy --target http://localhost:9000 --policy policy.json --token my-secret
 ```
 
-Point your MCP client at the gateway instead of the target server. Done.
+Point your MCP client at the gateway instead of the target server. Every
+request must carry `Authorization: Bearer my-secret`; allowed calls are
+forwarded to the target, denied calls are blocked before it. No database,
+no AWS, no frontend required.
+
+Validate a policy before shipping it:
+
+```bash
+apg policy validate policy.json
+```
 
 ---
 
@@ -129,13 +143,14 @@ The policy is a JSON allowlist loaded at startup. Maps directly to MCP `tools/ca
 {
   "version": 1,
   "default": "deny",
+  "credential_broker": "none",
   "tools": {
     "db.query": {
       "allow": true,
       "operations": ["select"],
       "tables": ["customers", "orders"],
       "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT"],
-      "aws_role": "arn:aws:iam::123456789012:role/APG-DBQuery"
+      "target_url": "http://localhost:9000/rpc"
     },
     "http.post": {
       "allow": true,
@@ -145,6 +160,13 @@ The policy is a JSON allowlist loaded at startup. Maps directly to MCP `tools/ca
   }
 }
 ```
+
+- `credential_broker`: `none` (default, zero external deps) or `aws_sts` to mint
+  per-request scoped credentials. With `aws_sts`, add `aws_role` and
+  `session_policy` per tool.
+- `target_url`: per-tool execution target; falls back to the `APG_TARGET_URL`
+  environment variable. If neither is set, an allowed request fails closed
+  rather than returning fabricated data.
 
 ---
 
@@ -161,16 +183,20 @@ Set via `APG_MODE=enforce` or `APG_MODE=audit`.
 
 ## Performance
 
-Benchmarked on a single Python process:
+The **enforcement decision** (auth + policy + egress) is in-process and
+sub-millisecond:
 
-| Operation | Latency | Throughput |
-|---|---|---|
-| Token verification (HMAC-SHA256) | 0.020ms | 50,769/sec |
-| Policy evaluation (ALLOW) | 0.010ms | 103,024/sec |
-| Policy evaluation (DENY) | 0.003ms | 399,073/sec |
-| **Full pipeline** | **0.036ms** | **27,713/sec** |
+| Operation | Latency |
+|---|---|
+| Token verification (HMAC-SHA256) | ~0.02ms |
+| Policy evaluation (ALLOW) | ~0.01ms |
+| Policy evaluation (DENY) | ~0.003ms |
 
-Scales linearly with cores. The gateway auto-scales from 2 to 20 pods via HPA (70% CPU threshold).
+End-to-end request latency is dominated by the two things the decision does
+*not* control: the network hop to the target (the Execute step) and, if
+`credential_broker: aws_sts` is enabled, the STS `AssumeRole` call
+(typically 50–200ms). Benchmark your own target; the enforcement overhead
+APG adds on top is the numbers above.
 
 ---
 
@@ -179,11 +205,13 @@ Scales linearly with cores. The gateway auto-scales from 2 to 20 pods via HPA (7
 | Variable | Description |
 |----------|-------------|
 | `APG_AGENT_TOKEN` | Bearer token for agent authentication |
+| `APG_TARGET_URL` | Default execution target for allowed requests (per-tool `target_url` overrides) |
+| `APG_MODE` | `enforce` or `audit` |
+| `AWS_ENDPOINT_URL` | STS endpoint (e.g. Floci/LocalStack); unset → real AWS. Only used with `credential_broker: aws_sts` |
 | `APG_JWT_SECRET` | Secret for signing operator JWTs |
 | `APG_OPERATOR_EMAIL` | Operator login email |
 | `APG_OPERATOR_PASSWORD` | Operator login password |
 | `APG_OPERATOR_WORKSPACE` | Workspace identifier |
-| `APG_MODE` | `enforce` or `audit` |
 | `LLM_PROVIDER` | `mock`, `ollama`, `openai`, `anthropic`, `microservice` |
 | `DATABASE_URL` | PostgreSQL connection string |
 
@@ -191,13 +219,14 @@ Scales linearly with cores. The gateway auto-scales from 2 to 20 pods via HPA (7
 
 ## Deploy to Kubernetes
 
-```powershell
-./deploy.ps1 build   # build images
-./deploy.ps1 push    # push to registry
-./deploy.ps1 aks     # apply k8s manifests
-```
+> **Note:** the `k8s/` manifests still describe the pre-consolidation
+> multi-service layout and assume in-memory session state. They are
+> quarantined pending the Phase 3 update (single backend image +
+> Redis-backed sessions so multi-replica is correct). See `k8s/README.md`.
+> For now, use `docker compose up --build`.
 
-Production: remove `AWS_ENDPOINT_URL` from gateway env to use real AWS STS instead of Floci.
+Once updated, with `credential_broker: aws_sts`, remove `AWS_ENDPOINT_URL`
+from the backend env to use real AWS STS instead of a local emulator.
 
 ---
 
@@ -258,11 +287,11 @@ Agent-Policy-Gateway/
 | Gateway | Python 3.13 + FastAPI |
 | Frontend | Next.js 14 + Tailwind CSS |
 | Database | PostgreSQL 16 |
-| Credential Minting | AWS STS (per-request, downscoped) |
+| Credential Minting | Optional: AWS STS (per-request, downscoped) or none |
 | Local AWS | Floci (dev); real AWS (prod) |
 | LLM Integration | Ollama / OpenAI / Anthropic (pluggable) |
-| Orchestration | Docker Compose / Kubernetes |
-| Tests | pytest |
+| Orchestration | Docker Compose |
+| Tests | pytest (236) · ruff · mypy · CI on 3.11–3.13 |
 
 ---
 
