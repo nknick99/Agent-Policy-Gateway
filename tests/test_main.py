@@ -72,9 +72,26 @@ def policy_file(tmp_path):
     return str(policy_path)
 
 
+class FakeExecutor:
+    """Executor port fake — records calls, returns a fixed result."""
+
+    def __init__(self, result: dict | None = None):
+        self.calls: list[tuple[str, dict]] = []
+        self.result = result if result is not None else {"status": "executed"}
+
+    async def execute(self, method, params, creds, tool_config):
+        self.calls.append((method, params))
+        return {**self.result, "method": method}
+
+
 @pytest.fixture
 def client(policy_file, monkeypatch):
-    """Create a test client with properly initialized app."""
+    """Create a test client with properly initialized app.
+
+    The pipeline's executor is replaced with a fake so the allow path
+    completes without a live target (execution itself is covered by
+    executor tests and the end-to-end smoke tests).
+    """
     monkeypatch.setenv("APG_AGENT_TOKEN", "test-token-secret")
     monkeypatch.setenv("APG_MODE", "enforce")
 
@@ -83,21 +100,11 @@ def client(policy_file, monkeypatch):
         "agent_policy_gateway.server.app.PolicyEvaluator",
         lambda: _make_policy_evaluator(policy_file),
     ):
-        # Patch StsBroker to avoid real AWS calls
-        with patch("agent_policy_gateway.server.app.StsBroker") as mock_broker_cls:
-            mock_broker = MagicMock()
-            mock_creds = MagicMock()
-            mock_creds.access_key_id = "AKIAIOSFODNN7EXAMPLE"
-            mock_creds.secret_access_key = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-            mock_creds.session_token = "FwoGZXIvYXdzEBY"
-            mock_broker.mint_credentials.return_value = mock_creds
-            mock_broker_cls.return_value = mock_broker
-            mock_broker_cls.discard = MagicMock()
+        from agent_policy_gateway.server import app as app_module
 
-            from agent_policy_gateway.server.app import app
-
-            with TestClient(app) as tc:
-                yield tc
+        with TestClient(app_module.app) as tc:
+            app_module.pipeline.executor = FakeExecutor()
+            yield tc
 
 
 def _make_policy_evaluator(policy_path: str):
@@ -279,8 +286,11 @@ class TestPipelineEnforcement:
         assert data["error"]["code"] == -32600
 
     def test_policy_denial_in_enforce_mode(self, client):
-        """Policy denial returns error in Enforce mode."""
-        # Use a method not in the policy
+        """Unknown tools are denied by policy (default deny), not schema.
+
+        Phase 1 (D11): the gateway fronts arbitrary MCP tools, so there
+        is no hardcoded method registry — the policy allowlist decides.
+        """
         payload = _rpc_payload(method="admin.delete", params={"target": "all"})
         response = client.post(
             "/rpc",
@@ -291,14 +301,15 @@ class TestPipelineEnforcement:
             },
         )
         data = response.json()
-        # Should fail at schema validation (method not recognized) with -32601
-        assert data["error"]["code"] == -32601
+        assert data["error"]["code"] == -32600
+        assert "policy denied" in data["error"]["message"].lower()
+        assert "admin.delete" in data["error"]["message"]
 
     def test_fail_closed_on_unhandled_exception(self, client):
         """Requirement 10.1: unhandled exception → -32603."""
         # Patch validate_envelope to raise unexpected error
         with patch(
-            "agent_policy_gateway.server.app.validate_envelope",
+            "agent_policy_gateway.core.pipeline.validate_envelope",
             side_effect=RuntimeError("Unexpected!"),
         ):
             response = client.post(
@@ -352,3 +363,106 @@ class TestCorrelationAndAudit:
                 },
             )
             assert mock_audit.emit.called
+
+
+# --- Execution and Credential Broker Tests (Phase 1) ---
+
+
+class TestExecution:
+    """The allow path executes through the injected executor port."""
+
+    def test_executor_receives_allowed_call(self, client):
+        from agent_policy_gateway.server import app as app_module
+
+        client.post(
+            "/rpc",
+            content=json.dumps(_rpc_payload()).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer test-token-secret",
+            },
+        )
+        executor = app_module.pipeline.executor
+        assert executor.calls == [("db.query", {"op": "SELECT", "table": "users", "limit": 10})]
+
+    def test_executor_not_called_on_denial(self, client):
+        from agent_policy_gateway.server import app as app_module
+
+        client.post(
+            "/rpc",
+            content=json.dumps(
+                _rpc_payload(params={"op": "DROP", "table": "users"})
+            ).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer test-token-secret",
+            },
+        )
+        assert app_module.pipeline.executor.calls == []
+
+    def test_no_target_fails_closed(self, client):
+        """Without any configured target, the allow path returns -32603 —
+        never a fabricated success."""
+        from agent_policy_gateway.adapters.executors.http_jsonrpc import (
+            HttpJsonRpcExecutor,
+        )
+        from agent_policy_gateway.server import app as app_module
+
+        app_module.pipeline.executor = HttpJsonRpcExecutor(default_target=None)
+        response = client.post(
+            "/rpc",
+            content=json.dumps(_rpc_payload()).encode(),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer test-token-secret",
+            },
+        )
+        data = response.json()
+        assert data["error"]["code"] == -32603
+        assert "no execution target" in data["error"]["message"].lower()
+
+
+class TestCredentialBroker:
+    """credential_broker: none (default) skips minting; aws_sts mints."""
+
+    def test_null_broker_default(self, client):
+        from agent_policy_gateway.adapters.brokers.null_broker import NullBroker
+        from agent_policy_gateway.server import app as app_module
+
+        assert isinstance(app_module.pipeline.broker, NullBroker)
+
+    def test_aws_sts_broker_mints(self, policy_file, monkeypatch, tmp_path):
+        monkeypatch.setenv("APG_AGENT_TOKEN", "test-token-secret")
+        monkeypatch.setenv("APG_MODE", "enforce")
+        monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+
+        # Same policy but with the STS broker opted in
+        policy = json.loads(open(policy_file).read())
+        policy["credential_broker"] = "aws_sts"
+        sts_policy_path = tmp_path / "sts_policy.json"
+        sts_policy_path.write_text(json.dumps(policy))
+
+        with patch(
+            "agent_policy_gateway.server.app.PolicyEvaluator",
+            lambda: _make_policy_evaluator(str(sts_policy_path)),
+        ):
+            with patch("agent_policy_gateway.server.app.StsBroker") as mock_broker_cls:
+                mock_broker = MagicMock()
+                mock_broker.mint_credentials.return_value = MagicMock()
+                mock_broker_cls.return_value = mock_broker
+
+                from agent_policy_gateway.server import app as app_module
+
+                with TestClient(app_module.app) as tc:
+                    app_module.pipeline.executor = FakeExecutor()
+                    response = tc.post(
+                        "/rpc",
+                        content=json.dumps(_rpc_payload()).encode(),
+                        headers={
+                            "Content-Type": "application/json",
+                            "Authorization": "Bearer test-token-secret",
+                        },
+                    )
+                assert "result" in response.json()
+                assert mock_broker.mint_credentials.called
+                assert mock_broker.discard.called

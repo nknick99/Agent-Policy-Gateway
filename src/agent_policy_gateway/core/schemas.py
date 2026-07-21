@@ -1,10 +1,17 @@
-"""JSON-RPC 2.0 schemas and tool parameter models."""
+"""JSON-RPC 2.0 envelope models and validation.
+
+The gateway fronts arbitrary MCP tools, so there are deliberately no
+hardcoded per-tool parameter schemas here: whether a tool and its
+parameters are acceptable is a policy decision (default deny), not a
+schema decision. Per-tool parameter schemas will return as optional,
+policy-defined validators (Phase 2).
+"""
 
 from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 
 # --- JSON-RPC 2.0 Models ---
 
@@ -35,35 +42,6 @@ class JsonRpcResponse(BaseModel):
     error: JsonRpcError | None = None
 
 
-# --- Tool Parameter Models ---
-
-
-class DbQueryParams(BaseModel):
-    """Parameters for the db.query tool."""
-
-    op: str
-    table: str
-    limit: int = Field(default=10, ge=1)
-    filter: dict | None = None
-
-
-class HttpPostParams(BaseModel):
-    """Parameters for the http.post tool."""
-
-    url: str
-    body: dict | None = None
-    headers: dict[str, str] | None = None
-
-
-class ToolCallPayload(BaseModel):
-    """Full tool call payload combining JSON-RPC envelope with params."""
-
-    jsonrpc: Literal["2.0"]
-    id: int | str
-    method: str
-    params: dict
-
-
 # --- Schema Validation Error ---
 
 
@@ -74,14 +52,6 @@ class SchemaValidationError(Exception):
         self.code = code
         self.message = message
         super().__init__(message)
-
-
-# --- Method → Model Registry ---
-
-PARAM_MODELS: dict[str, type[BaseModel]] = {
-    "db.query": DbQueryParams,
-    "http.post": HttpPostParams,
-}
 
 
 # --- Validation Functions ---
@@ -106,40 +76,3 @@ def validate_envelope(payload: dict[str, Any]) -> None:
             -32600,
             f"Invalid jsonrpc version: expected '2.0', got '{payload['jsonrpc']}'",
         )
-
-
-def validate_params(method: str, params: dict) -> BaseModel:
-    """Route params to the correct Pydantic model based on method name.
-
-    Returns the validated Pydantic model instance on success.
-    Raises SchemaValidationError with the appropriate JSON-RPC error code on failure:
-        -32601: Method not found (no registered model)
-        -32602: Invalid params (type mismatch or missing required params)
-    """
-    model_cls = PARAM_MODELS.get(method)
-    if model_cls is None:
-        raise SchemaValidationError(
-            -32601, f"Method not recognized: '{method}'"
-        )
-
-    try:
-        return model_cls(**params)
-    except ValidationError as e:
-        # Extract meaningful error info from Pydantic validation
-        errors = e.errors()
-        if errors:
-            first_error = errors[0]
-            field = ".".join(str(loc) for loc in first_error["loc"])
-            error_type = first_error["type"]
-
-            if error_type == "missing":
-                raise SchemaValidationError(
-                    -32602, f"Missing required parameter: '{field}'"
-                ) from e
-            else:
-                raise SchemaValidationError(
-                    -32602,
-                    f"Invalid parameter '{field}': {first_error['msg']}",
-                ) from e
-
-        raise SchemaValidationError(-32602, "Invalid params") from e

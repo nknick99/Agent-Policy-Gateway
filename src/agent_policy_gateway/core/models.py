@@ -69,6 +69,8 @@ class ToolConfig(BaseModel):
     deny_destinations: list[str] = []
     aws_role: str = ""
     session_policy: dict = {}
+    # Per-tool execution target; falls back to APG_TARGET_URL when empty
+    target_url: str = ""
 
 
 class PolicyDocument(BaseModel):
@@ -81,6 +83,9 @@ class PolicyDocument(BaseModel):
     caller_auth: CallerAuth
     session_limits: SessionLimits
     tools: dict[str, ToolConfig]
+    # Per-request credential minting is opt-in; "none" keeps the happy
+    # path free of external dependencies
+    credential_broker: Literal["none", "aws_sts"] = "none"
 
 
 # --- Session State ---

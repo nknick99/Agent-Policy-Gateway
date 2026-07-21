@@ -1,23 +1,26 @@
-"""Structured audit logging for Agent Policy Gateway Proxy.
+"""Structured stdout audit sink for Agent Policy Gateway.
 
 Emits exactly one structured JSON audit event per request to stdout
 for container log collection (append-only off-box destination).
 
 This module intentionally exposes NO interface to modify or delete
 existing audit entries (Requirement 9.7).
+
+The event schema and redaction helpers live in core.audit; they are
+re-exported here for backwards compatibility.
 """
 
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
-from agent_policy_gateway.core.filter import SECRET_PATTERNS
+from agent_policy_gateway.core.audit import AuditEvent, redact_params
 from agent_policy_gateway.core.models import AuditDecision
+
+__all__ = ["AuditEvent", "AuditLogger", "redact_params"]
 
 
 def _configure_structlog() -> None:
@@ -39,72 +42,8 @@ def _configure_structlog() -> None:
 _configure_structlog()
 
 
-@dataclass
-class AuditEvent:
-    """Structured audit event emitted once per request.
-
-    Fields are populated progressively as the pipeline executes.
-    On unhandled exceptions, a partial event is emitted with whatever
-    information is available at that point.
-    """
-
-    correlation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: str = field(
-        default_factory=lambda: datetime.now(UTC).isoformat()
-    )
-    caller_identity: str = ""
-    method: str = ""
-    decision: AuditDecision = AuditDecision.DENY
-    rule_matched: str = ""
-    params_redacted: dict = field(default_factory=dict)
-    # ALLOW-specific fields
-    role_assumed: str | None = None
-    outcome: str = ""
-    # DENY-specific field
-    denial_reason: str = ""
-    duration_ms: float = 0.0
-
-
-def redact_params(params: dict[str, Any]) -> dict[str, Any]:
-    """Redact parameter values matching SECRET_PATTERNS.
-
-    Returns a new dict with secret values replaced by "[REDACTED]".
-    Non-string values are preserved as-is. The original dict is not mutated.
-    """
-    redacted: dict[str, Any] = {}
-    for key, value in params.items():
-        if isinstance(value, str):
-            redacted[key] = _redact_string(value)
-        elif isinstance(value, dict):
-            redacted[key] = redact_params(value)
-        elif isinstance(value, list):
-            redacted[key] = [_redact_value(item) for item in value]
-        else:
-            redacted[key] = value
-    return redacted
-
-
-def _redact_value(value: Any) -> Any:
-    """Redact a single value if it's a string containing secrets."""
-    if isinstance(value, str):
-        return _redact_string(value)
-    elif isinstance(value, dict):
-        return redact_params(value)
-    elif isinstance(value, list):
-        return [_redact_value(item) for item in value]
-    return value
-
-
-def _redact_string(value: str) -> str:
-    """Replace the entire string with [REDACTED] if any secret pattern matches."""
-    for pattern in SECRET_PATTERNS:
-        if pattern.search(value):
-            return "[REDACTED]"
-    return value
-
-
 class AuditLogger:
-    """Append-only structured audit logger.
+    """Append-only structured audit sink writing to stdout.
 
     Emits exactly one JSON event per request to stdout for off-box
     log collection. This class intentionally provides NO methods to
@@ -112,7 +51,7 @@ class AuditLogger:
     """
 
     def __init__(self) -> None:
-        self._logger = structlog.get_logger("agent_policy_gateway.adapters.audit.stdout")
+        self._logger = structlog.get_logger("agent_policy_gateway.audit")
 
     def generate_correlation_id(self) -> str:
         """Generate a unique correlation ID (UUID4) for a request."""

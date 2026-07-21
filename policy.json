@@ -1,6 +1,7 @@
 {
   "version": 1,
   "default": "deny",
+  "credential_broker": "none",
   "caller_auth": {
     "method": "shared_token",
     "token_env": "APG_AGENT_TOKEN"

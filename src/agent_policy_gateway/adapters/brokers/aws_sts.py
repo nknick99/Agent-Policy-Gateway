@@ -12,21 +12,16 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+# CredentialMintError lives in core.pipeline (the pipeline catches it without
+# importing this adapter); re-exported here for compatibility.
+from agent_policy_gateway.core.pipeline import CredentialMintError
+
 if TYPE_CHECKING:
     from mypy_boto3_sts import STSClient
 
 logger = logging.getLogger(__name__)
 
-
-class CredentialMintError(Exception):
-    """Raised when credential minting fails.
-
-    Carries a generic user-facing message that does not leak
-    AWS SDK errors, ARNs, or account IDs.
-    """
-
-    def __init__(self, message: str = "Credential minting failed") -> None:
-        super().__init__(message)
+__all__ = ["CredentialMintError", "JitCredentials", "StsBroker"]
 
 
 @dataclass

@@ -1,15 +1,19 @@
-"""Tests for Agent Policy Gateway JSON-RPC schemas and parameter models."""
+"""Tests for Agent Policy Gateway JSON-RPC envelope schemas and validation.
+
+Per-tool parameter models were removed deliberately (Phase 1, D11):
+the gateway fronts arbitrary MCP tools, so tool/param acceptance is a
+policy decision, not a schema decision.
+"""
 
 import pytest
 from pydantic import ValidationError
 
 from agent_policy_gateway.core.schemas import (
-    DbQueryParams,
-    HttpPostParams,
     JsonRpcError,
     JsonRpcRequest,
     JsonRpcResponse,
-    ToolCallPayload,
+    SchemaValidationError,
+    validate_envelope,
 )
 
 # --- JsonRpcRequest Tests ---
@@ -44,6 +48,13 @@ class TestJsonRpcRequest:
     def test_missing_id_rejected(self):
         with pytest.raises(ValidationError):
             JsonRpcRequest(jsonrpc="2.0", method="test")
+
+    def test_arbitrary_tool_method_accepted(self):
+        """Unknown tools are valid at the envelope level — policy decides."""
+        req = JsonRpcRequest(
+            jsonrpc="2.0", id=1, method="fs.read", params={"path": "/tmp/x"}
+        )
+        assert req.method == "fs.read"
 
 
 # --- JsonRpcError Tests ---
@@ -88,74 +99,33 @@ class TestJsonRpcResponse:
         assert resp.id is None
 
 
-# --- DbQueryParams Tests ---
+# --- validate_envelope Tests ---
 
 
-class TestDbQueryParams:
-    def test_valid_params(self):
-        p = DbQueryParams(op="SELECT", table="users")
-        assert p.op == "SELECT"
-        assert p.table == "users"
-        assert p.limit == 10
-        assert p.filter is None
+class TestValidateEnvelope:
+    def test_valid_envelope_passes(self):
+        validate_envelope({"jsonrpc": "2.0", "id": 1, "method": "anything"})
 
-    def test_custom_limit(self):
-        p = DbQueryParams(op="SELECT", table="orders", limit=50)
-        assert p.limit == 50
+    def test_missing_jsonrpc(self):
+        with pytest.raises(SchemaValidationError) as exc_info:
+            validate_envelope({"id": 1, "method": "m"})
+        assert exc_info.value.code == -32600
+        assert "jsonrpc" in exc_info.value.message
 
-    def test_with_filter(self):
-        p = DbQueryParams(op="SELECT", table="users", filter={"active": True})
-        assert p.filter == {"active": True}
+    def test_missing_id(self):
+        with pytest.raises(SchemaValidationError) as exc_info:
+            validate_envelope({"jsonrpc": "2.0", "method": "m"})
+        assert exc_info.value.code == -32600
+        assert "id" in exc_info.value.message
 
-    def test_zero_limit_rejected(self):
-        with pytest.raises(ValidationError):
-            DbQueryParams(op="SELECT", table="users", limit=0)
+    def test_missing_method(self):
+        with pytest.raises(SchemaValidationError) as exc_info:
+            validate_envelope({"jsonrpc": "2.0", "id": 1})
+        assert exc_info.value.code == -32600
+        assert "method" in exc_info.value.message
 
-    def test_missing_op_rejected(self):
-        with pytest.raises(ValidationError):
-            DbQueryParams(table="users")
-
-    def test_missing_table_rejected(self):
-        with pytest.raises(ValidationError):
-            DbQueryParams(op="SELECT")
-
-
-# --- HttpPostParams Tests ---
-
-
-class TestHttpPostParams:
-    def test_valid_params(self):
-        p = HttpPostParams(url="https://api.example.com/data")
-        assert p.url == "https://api.example.com/data"
-        assert p.body is None
-        assert p.headers is None
-
-    def test_with_body_and_headers(self):
-        p = HttpPostParams(
-            url="https://api.example.com",
-            body={"key": "value"},
-            headers={"Content-Type": "application/json"},
-        )
-        assert p.body == {"key": "value"}
-        assert p.headers == {"Content-Type": "application/json"}
-
-    def test_missing_url_rejected(self):
-        with pytest.raises(ValidationError):
-            HttpPostParams()
-
-
-# --- ToolCallPayload Tests ---
-
-
-class TestToolCallPayload:
-    def test_valid_payload(self):
-        p = ToolCallPayload(
-            jsonrpc="2.0", id=1, method="db.query", params={"op": "SELECT"}
-        )
-        assert p.jsonrpc == "2.0"
-        assert p.id == 1
-        assert p.method == "db.query"
-
-    def test_invalid_jsonrpc_rejected(self):
-        with pytest.raises(ValidationError):
-            ToolCallPayload(jsonrpc="1.0", id=1, method="test", params={})
+    def test_wrong_version(self):
+        with pytest.raises(SchemaValidationError) as exc_info:
+            validate_envelope({"jsonrpc": "1.0", "id": 1, "method": "m"})
+        assert exc_info.value.code == -32600
+        assert "version" in exc_info.value.message.lower()
