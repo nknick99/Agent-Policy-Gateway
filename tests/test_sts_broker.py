@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_policy_gateway.sts_broker import CredentialMintError, JitCredentials, StsBroker
+from agent_policy_gateway.adapters.brokers.aws_sts import CredentialMintError, JitCredentials, StsBroker
 
 
 # --- Fixtures ---

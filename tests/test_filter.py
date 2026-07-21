@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from agent_policy_gateway.filter import SECRET_PATTERNS, _REDACTED, filter_response
+from agent_policy_gateway.core.filter import SECRET_PATTERNS, _REDACTED, filter_response
 
 
 class TestSecretPatterns:

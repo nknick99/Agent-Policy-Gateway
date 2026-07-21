@@ -1,4 +1,4 @@
-"""Unit tests for agent_policy_gateway.mode module."""
+"""Unit tests for agent_policy_gateway.core.mode module."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_policy_gateway.mode import ModeController, OperatingMode, get_operating_mode
+from agent_policy_gateway.core.mode import ModeController, OperatingMode, get_operating_mode
 
 
 class TestGetOperatingMode:

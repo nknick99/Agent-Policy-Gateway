@@ -10,8 +10,8 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from agent_policy_gateway.models import Decision
-from agent_policy_gateway.policy import PolicyEvaluator, PolicyResult
+from agent_policy_gateway.core.models import Decision
+from agent_policy_gateway.core.policy import PolicyEvaluator, PolicyResult
 
 
 # --- Fixtures ---
@@ -146,7 +146,7 @@ class TestPolicyEvaluatorInit:
         """Requirement 11.1: Startup log confirms policy loaded as immutable."""
         import logging
 
-        with caplog.at_level(logging.INFO, logger="agent_policy_gateway.policy"):
+        with caplog.at_level(logging.INFO, logger="agent_policy_gateway.core.policy"):
             PolicyEvaluator(policy_path=policy_path)
         assert any("Policy loaded as immutable" in msg for msg in caplog.messages)
 

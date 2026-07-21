@@ -82,11 +82,11 @@ def client(policy_file, monkeypatch):
 
     # Patch PolicyEvaluator to use our temp policy file
     with patch(
-        "agent_policy_gateway.main.PolicyEvaluator",
+        "agent_policy_gateway.server.app.PolicyEvaluator",
         lambda: _make_policy_evaluator(policy_file),
     ):
         # Patch StsBroker to avoid real AWS calls
-        with patch("agent_policy_gateway.main.StsBroker") as mock_broker_cls:
+        with patch("agent_policy_gateway.server.app.StsBroker") as mock_broker_cls:
             mock_broker = MagicMock()
             mock_creds = MagicMock()
             mock_creds.access_key_id = "AKIAIOSFODNN7EXAMPLE"
@@ -96,7 +96,7 @@ def client(policy_file, monkeypatch):
             mock_broker_cls.return_value = mock_broker
             mock_broker_cls.discard = MagicMock()
 
-            from agent_policy_gateway.main import app
+            from agent_policy_gateway.server.app import app
 
             with TestClient(app) as tc:
                 yield tc
@@ -104,7 +104,7 @@ def client(policy_file, monkeypatch):
 
 def _make_policy_evaluator(policy_path: str):
     """Create a real PolicyEvaluator with the given policy path."""
-    from agent_policy_gateway.policy import PolicyEvaluator
+    from agent_policy_gateway.core.policy import PolicyEvaluator
 
     return PolicyEvaluator(policy_path)
 
@@ -300,7 +300,7 @@ class TestPipelineEnforcement:
         """Requirement 10.1: unhandled exception → -32603."""
         # Patch validate_envelope to raise unexpected error
         with patch(
-            "agent_policy_gateway.main.validate_envelope",
+            "agent_policy_gateway.server.app.validate_envelope",
             side_effect=RuntimeError("Unexpected!"),
         ):
             response = client.post(
@@ -324,7 +324,7 @@ class TestCorrelationAndAudit:
 
     def test_audit_event_emitted_on_success(self, client):
         """Audit logger emit is called for successful requests."""
-        with patch("agent_policy_gateway.main.audit_logger") as mock_audit:
+        with patch("agent_policy_gateway.server.app.audit_logger") as mock_audit:
             mock_audit.generate_correlation_id.return_value = "test-corr-id"
             mock_audit.emit = MagicMock()
 
@@ -341,7 +341,7 @@ class TestCorrelationAndAudit:
 
     def test_audit_event_emitted_on_error(self, client):
         """Audit logger emit is called even for error responses."""
-        with patch("agent_policy_gateway.main.audit_logger") as mock_audit:
+        with patch("agent_policy_gateway.server.app.audit_logger") as mock_audit:
             mock_audit.generate_correlation_id.return_value = "test-corr-id"
             mock_audit.emit = MagicMock()
 

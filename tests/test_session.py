@@ -2,8 +2,8 @@
 
 import pytest
 
-from agent_policy_gateway.models import SessionLimits
-from agent_policy_gateway.session import SessionManager
+from agent_policy_gateway.core.models import SessionLimits
+from agent_policy_gateway.core.session import SessionManager
 
 
 @pytest.fixture

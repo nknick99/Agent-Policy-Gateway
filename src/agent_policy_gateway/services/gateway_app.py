@@ -27,12 +27,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from agent_policy_gateway.auth import validate_startup
-from agent_policy_gateway.policy import PolicyEvaluator
-from agent_policy_gateway.audit import AuditLogger
-from agent_policy_gateway.session import SessionManager
-from agent_policy_gateway.sts_broker import StsBroker
-from agent_policy_gateway.mode import ModeController
+from agent_policy_gateway.adapters.identity.shared_token import validate_startup
+from agent_policy_gateway.core.policy import PolicyEvaluator
+from agent_policy_gateway.adapters.audit.stdout import AuditLogger
+from agent_policy_gateway.core.session import SessionManager
+from agent_policy_gateway.adapters.brokers.aws_sts import StsBroker
+from agent_policy_gateway.core.mode import ModeController
 from agent_policy_gateway.dashboard_api.router import router as dashboard_router
 
 
@@ -86,5 +86,5 @@ async def health():
 
 
 # Import and mount the RPC endpoint from the main module
-from agent_policy_gateway.main import handle_rpc  # noqa: E402
+from agent_policy_gateway.server.app import handle_rpc  # noqa: E402
 app.post("/rpc")(handle_rpc)

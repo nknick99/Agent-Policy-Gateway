@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from agent_policy_gateway.auth import _TOKEN_ENV_VAR, authenticate_caller, validate_startup
+from agent_policy_gateway.adapters.identity.shared_token import _TOKEN_ENV_VAR, authenticate_caller, validate_startup
 
 
 class TestAuthenticateCaller:
@@ -48,7 +48,7 @@ class TestAuthenticateCaller:
     def test_uses_constant_time_comparison(self):
         """Verify hmac.compare_digest is used (constant-time)."""
         with patch.dict(os.environ, {_TOKEN_ENV_VAR: "token"}):
-            with patch("agent_policy_gateway.auth.hmac.compare_digest", return_value=True) as mock_cmp:
+            with patch("agent_policy_gateway.adapters.identity.shared_token.hmac.compare_digest", return_value=True) as mock_cmp:
                 result = authenticate_caller("token")
                 mock_cmp.assert_called_once_with("token", "token")
                 assert result is True

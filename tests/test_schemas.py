@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from agent_policy_gateway.schemas import (
+from agent_policy_gateway.core.schemas import (
     DbQueryParams,
     HttpPostParams,
     JsonRpcError,

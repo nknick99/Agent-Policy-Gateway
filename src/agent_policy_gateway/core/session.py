@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
-from agent_policy_gateway.models import SessionLimits, SessionState
+from agent_policy_gateway.core.models import SessionLimits, SessionState
 
 
 class SessionManager:

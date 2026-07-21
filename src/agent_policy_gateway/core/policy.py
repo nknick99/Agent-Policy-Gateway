@@ -17,7 +17,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from agent_policy_gateway.models import Decision, PolicyDocument, ToolConfig
+from agent_policy_gateway.core.models import Decision, PolicyDocument, ToolConfig
 
 logger = logging.getLogger(__name__)
 

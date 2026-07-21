@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from agent_policy_gateway.models import (
+from agent_policy_gateway.core.models import (
     AuditDecision,
     CallerAuth,
     Constraints,

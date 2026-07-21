@@ -16,8 +16,8 @@ from typing import Any
 
 import structlog
 
-from agent_policy_gateway.filter import SECRET_PATTERNS
-from agent_policy_gateway.models import AuditDecision
+from agent_policy_gateway.core.filter import SECRET_PATTERNS
+from agent_policy_gateway.core.models import AuditDecision
 
 
 def _configure_structlog() -> None:
@@ -112,7 +112,7 @@ class AuditLogger:
     """
 
     def __init__(self) -> None:
-        self._logger = structlog.get_logger("agent_policy_gateway.audit")
+        self._logger = structlog.get_logger("agent_policy_gateway.adapters.audit.stdout")
 
     def generate_correlation_id(self) -> str:
         """Generate a unique correlation ID (UUID4) for a request."""
