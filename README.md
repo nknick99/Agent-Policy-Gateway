@@ -392,16 +392,17 @@ APG adds on top is the numbers above.
 
 ## Deploy to Kubernetes
 
-> **Multi-replica note:** session/quota state is behind a `SessionStore` port.
-> The default is in-memory (single process); set `APG_REDIS_URL` to use a shared
-> Redis store so quotas are counted once across all replicas rather than N times
-> (this was defect D7). The `k8s/` manifests still describe the pre-consolidation
-> multi-service layout and need updating to the single backend image + a Redis
-> service before re-publishing. See `k8s/README.md`. For now, use
-> `docker compose up --build`.
+The `k8s/` manifests deploy the modular monolith (`backend`), an optional
+`frontend`, and a `redis` for shared session/quota state — so multiple backend
+replicas count quotas **once**, not per-replica (defect D7). See
+**[k8s/README.md](k8s/README.md)** for the apply order. For a zero-infrastructure
+local run, use `docker compose up --build`.
 
-Once updated, with `credential_broker: aws_sts`, remove `AWS_ENDPOINT_URL`
-from the backend env to use real AWS STS instead of a local emulator.
+> **Multi-replica note:** session/quota state is behind a `SessionStore` port.
+> The default is in-memory (single process); the manifests set `APG_REDIS_URL`
+> to the in-cluster Redis so quotas are shared across replicas. With
+> `credential_broker: aws_sts`, add AWS credentials/IRSA to the backend to use
+> real AWS STS.
 
 ---
 
@@ -419,7 +420,7 @@ Agent-Policy-Gateway/
 │   ├── frontend/Dockerfile
 │   └── postgres/init.sql
 │
-├── k8s/                            # Kubernetes manifests (stale — see k8s/README.md)
+├── k8s/                            # Kubernetes manifests (monolith + Redis; see k8s/README.md)
 │
 ├── docs/adr/                       # Architecture decision records
 │

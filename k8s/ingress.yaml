@@ -17,18 +17,12 @@ spec:
     - host: apg.yourdomain.com
       http:
         paths:
-          - path: /api/auth
-            pathType: Prefix
-            backend:
-              service:
-                name: auth
-                port:
-                  number: 8001
+          # All API paths (gateway + auth) go to the one backend.
           - path: /api
             pathType: Prefix
             backend:
               service:
-                name: gateway
+                name: backend
                 port:
                   number: 8000
           - path: /

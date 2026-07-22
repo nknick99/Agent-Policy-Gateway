@@ -21,10 +21,11 @@ spec:
           ports:
             - containerPort: 3000
           env:
+            # One backend serves gateway + auth + agent APIs (modular monolith).
             - name: BACKEND_URL
-              value: "http://gateway:8000"
+              value: "http://backend:8000"
             - name: AUTH_URL
-              value: "http://auth:8001"
+              value: "http://backend:8000"
           resources:
             requests:
               cpu: "100m"
