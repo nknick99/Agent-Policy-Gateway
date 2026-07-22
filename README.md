@@ -315,6 +315,20 @@ apg audit tail --follow                          # stream new events live
 
 The audit trail is append-only — there is no update or delete path.
 
+### OpenTelemetry (optional)
+
+Set `APG_OTEL_ENABLED=1` (with `pip install "agent-policy-gateway[otel]"`) to emit
+OpenTelemetry traces and metrics. Off by default — zero cost and zero dependency
+otherwise. When enabled the proxy emits:
+
+- one span per request (`apg.proxy.request`) tagged with tool, decision, agent, and status;
+- `apg.requests` — a counter of decisions, by `apg.tool` / `apg.decision` / `apg.agent_id`;
+- `apg.request.duration` — a latency histogram (ms).
+
+Exporters are configured from the standard `OTEL_EXPORTER_OTLP_ENDPOINT` /
+`OTEL_SERVICE_NAME` environment variables, so it drops into any OTLP-compatible
+collector (Grafana/Tempo, Jaeger, Datadog, etc.).
+
 ---
 
 ## Compliance
@@ -357,6 +371,7 @@ APG adds on top is the numbers above.
 | `APG_MODE` | `enforce` or `audit` |
 | `APG_REDIS_URL` | `redis://…` — use a shared Redis session/quota store (required for correct quotas across replicas). Unset → in-memory. Needs `pip install "agent-policy-gateway[redis]"` |
 | `APG_SESSION_TTL_SECONDS` | Optional expiry for idle Redis sessions |
+| `APG_OTEL_ENABLED` | `1` to emit OpenTelemetry traces + metrics (needs `pip install "agent-policy-gateway[otel]"`). Exporters read the standard `OTEL_EXPORTER_OTLP_*` vars |
 | `AWS_ENDPOINT_URL` | STS endpoint (e.g. Floci/LocalStack); unset → real AWS. Only used with `credential_broker: aws_sts` |
 | `APG_JWT_SECRET` | Secret for signing operator JWTs (PyJWT, HS256; ≥32 bytes). No built-in default — required to issue/verify operator tokens |
 | `APG_OPERATOR_EMAIL` | Operator login email (required; no default) |

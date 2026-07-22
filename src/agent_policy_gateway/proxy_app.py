@@ -28,6 +28,7 @@ from fastapi.responses import JSONResponse
 from agent_policy_gateway.adapters.audit import build_audit_sink
 from agent_policy_gateway.adapters.audit.jsonl import attempt_summary as _attempt_summary
 from agent_policy_gateway.adapters.identity import build_identity_provider
+from agent_policy_gateway.adapters.observability import otel as telemetry
 from agent_policy_gateway.core.enforcement import evaluate_call
 from agent_policy_gateway.core.models import PolicyDocument
 from agent_policy_gateway.core.policy import (
@@ -96,6 +97,7 @@ def create_proxy_app(
     evaluator = build_evaluator(policy_path)
     identity_provider = build_identity_provider(evaluator.policy)
     audit_sink = build_audit_sink(audit_file)
+    telemetry.configure_from_env()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -110,6 +112,33 @@ def create_proxy_app(
         redoc_url=None,
         lifespan=lifespan,
     )
+
+    @app.middleware("http")
+    async def _telemetry(request: Request, call_next):
+        # One span + one decision metric per request. Decision detail is passed
+        # from the handler via request.state (backed by the shared ASGI scope),
+        # which propagates reliably across the middleware boundary.
+        if not telemetry.enabled():
+            return await call_next(request)
+        started = time.monotonic()
+        with telemetry.request_span("apg.proxy.request", {"http.method": request.method}):
+            response = await call_next(request)
+            state = request.state
+            tool = getattr(state, "apg_tool", None)
+            decision = getattr(state, "apg_decision", "PASS_THROUGH")
+            agent_id = getattr(state, "apg_agent_id", None)
+            telemetry.set_span_attributes(
+                **{
+                    "apg.tool": tool,
+                    "apg.decision": decision,
+                    "apg.agent_id": agent_id,
+                    "http.status_code": response.status_code,
+                }
+            )
+            telemetry.record_decision(
+                tool, decision, agent_id, (time.monotonic() - started) * 1000
+            )
+            return response
 
     @app.get("/health")
     async def health():
@@ -148,6 +177,8 @@ def create_proxy_app(
         token = auth_header.removeprefix("Bearer ").strip()
         identity = identity_provider.authenticate(token)
         if identity is None:
+            request.state.apg_tool = method_name
+            request.state.apg_decision = "DENY"
             elapsed = (time.monotonic() - start) * 1000
             audit_sink.write({
                 "correlation_id": correlation_id,
@@ -191,6 +222,9 @@ def create_proxy_app(
 
             if not result["allowed"] and mode == "enforce":
                 # DENIED — don't forward to target
+                request.state.apg_tool = method_name
+                request.state.apg_decision = "DENY"
+                request.state.apg_agent_id = identity.agent_id
                 elapsed = (time.monotonic() - start) * 1000
                 audit_sink.write({
                     "correlation_id": correlation_id,
@@ -237,6 +271,9 @@ def create_proxy_app(
 
         # ─── Audit log ───
         if is_tool_call:
+            request.state.apg_tool = method_name
+            request.state.apg_decision = "ALLOW" if outcome == "ALLOWED" else outcome
+            request.state.apg_agent_id = identity.agent_id
             audit_sink.write({
                 "correlation_id": correlation_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),

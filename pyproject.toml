@@ -45,6 +45,11 @@ aws = ["boto3>=1.39,<2"]
 redis = ["redis>=5,<7"]
 # Dashboard/operator auth (server path only, not the CLI): real JWT + argon2.
 server = ["pyjwt>=2.8,<3", "argon2-cffi>=23,<25"]
+# OpenTelemetry traces + metrics (opt-in via APG_OTEL_ENABLED).
+otel = [
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
+]
 dev = [
     "pytest>=8.3,<9",
     "hypothesis>=6.155,<7",
@@ -56,6 +61,8 @@ dev = [
     "fakeredis>=2.20,<3",
     "pyjwt>=2.8,<3",
     "argon2-cffi>=23,<25",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.20",
 ]
 
 [project.urls]
