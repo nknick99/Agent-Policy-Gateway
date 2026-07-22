@@ -241,6 +241,41 @@ The policy is a JSON allowlist loaded at startup. Maps directly to MCP `tools/ca
 
 ---
 
+## Per-agent identity
+
+By default the proxy uses a single shared token — one secret, one identity that
+may call every tool. To run many agents through one gateway, add an `agents`
+map: each agent authenticates with its own bearer token and is scoped to a
+subset of tools. The per-tool rules (operations, tables, egress, SQL) are still
+shared; identity decides only *which tools an agent may reach at all*.
+
+```json
+{
+  "version": 1,
+  "default": "deny",
+  "tools": {
+    "db.query":  { "allow": true, "operations": ["select"] },
+    "http.post": { "allow": true, "destination_whitelist": ["https://api.example.com"] }
+  },
+  "agents": {
+    "reporting":   { "token_env": "APG_TOKEN_REPORTING",   "tools": ["db.query"] },
+    "provisioner": { "token_env": "APG_TOKEN_PROVISIONER", "tools": ["*"] }
+  }
+}
+```
+
+Each agent's token lives in the named environment variable (never in the policy
+file). A request with the `reporting` token can call `db.query` but is denied
+`http.post` with `Agent 'reporting' is not permitted to call 'http.post'`;
+`"tools": ["*"]` grants every tool. Every audit event records the resolved
+`agent_id`, so the trail attributes each action to a specific agent. With no
+`agents` map, behavior is unchanged (single shared token).
+
+> OIDC/SSO and per-agent JWT subjects slot in later behind the same
+> `IdentityProvider` port — no change to the enforcement path.
+
+---
+
 ## Operating Modes
 
 | Mode | Behavior |

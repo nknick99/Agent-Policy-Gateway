@@ -89,6 +89,21 @@ class ToolConfig(BaseModel):
     sql: SqlPolicy | None = None
 
 
+class AgentConfig(BaseModel):
+    """A named agent identity and the tools it is scoped to.
+
+    Each agent authenticates with its own bearer token (held in `token_env`)
+    and may call only the tools listed in `tools` (["*"] = every tool). The
+    per-tool rules still come from the shared `tools` policy; this only decides
+    which tools the agent can reach at all.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    token_env: str  # env var holding this agent's bearer token
+    tools: list[str] = ["*"]  # tool allowlist for this agent; ["*"] = all tools
+
+
 class PolicyDocument(BaseModel):
     """Top-level immutable policy configuration loaded at startup."""
 
@@ -99,6 +114,9 @@ class PolicyDocument(BaseModel):
     caller_auth: CallerAuth
     session_limits: SessionLimits
     tools: dict[str, ToolConfig]
+    # Optional per-agent identities. Empty => single shared-token model
+    # (caller_auth), i.e. one identity permitted every tool.
+    agents: dict[str, AgentConfig] = {}
     # Per-request credential minting is opt-in; "none" keeps the happy
     # path free of external dependencies
     credential_broker: Literal["none", "aws_sts"] = "none"

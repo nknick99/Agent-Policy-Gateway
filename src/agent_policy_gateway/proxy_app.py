@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 
 from agent_policy_gateway.adapters.audit import build_audit_sink
 from agent_policy_gateway.adapters.audit.jsonl import attempt_summary as _attempt_summary
-from agent_policy_gateway.adapters.identity.shared_token import authenticate_caller
+from agent_policy_gateway.adapters.identity import build_identity_provider
 from agent_policy_gateway.core.enforcement import evaluate_call
 from agent_policy_gateway.core.models import PolicyDocument
 from agent_policy_gateway.core.policy import (
@@ -94,6 +94,7 @@ def create_proxy_app(
     """Create a transparent MCP proxy with policy enforcement."""
 
     evaluator = build_evaluator(policy_path)
+    identity_provider = build_identity_provider(evaluator.policy)
     audit_sink = build_audit_sink(audit_file)
 
     @asynccontextmanager
@@ -142,16 +143,18 @@ def create_proxy_app(
         except (json.JSONDecodeError, AttributeError):
             pass
 
-        # ─── Authentication (every proxied request, constant-time) ───
+        # ─── Authentication → identity (every proxied request, constant-time) ───
         auth_header = request.headers.get("Authorization", "")
         token = auth_header.removeprefix("Bearer ").strip()
-        if not authenticate_caller(token):
+        identity = identity_provider.authenticate(token)
+        if identity is None:
             elapsed = (time.monotonic() - start) * 1000
             audit_sink.write({
                 "correlation_id": correlation_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
                 "outcome": "DENY",
                 "method": method_name,
+                "agent_id": None,
                 "reason": "Authentication failed",
                 "latency_ms": round(elapsed, 2),
                 "mode": mode,
@@ -171,7 +174,20 @@ def create_proxy_app(
         reason = None
 
         if is_tool_call and method_name:
-            result = evaluate_request(method_name, params, evaluator)
+            # Identity scope first: is this agent allowed to call this tool at
+            # all? Then the shared per-tool rules (operations, egress, SQL).
+            result: dict[str, Any]
+            if not identity.may_call(method_name):
+                result = {
+                    "allowed": False,
+                    "outcome": "DENIED",
+                    "reason": (
+                        f"Agent '{identity.agent_id}' is not permitted to call "
+                        f"'{method_name}'"
+                    ),
+                }
+            else:
+                result = evaluate_request(method_name, params, evaluator)
 
             if not result["allowed"] and mode == "enforce":
                 # DENIED — don't forward to target
@@ -181,6 +197,7 @@ def create_proxy_app(
                     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
                     "outcome": "DENY",
                     "method": method_name,
+                    "agent_id": identity.agent_id,
                     "reason": result["reason"],
                     "latency_ms": round(elapsed, 2),
                     "mode": mode,
@@ -225,6 +242,7 @@ def create_proxy_app(
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
                 "outcome": "ALLOW" if outcome == "ALLOWED" else outcome,
                 "method": method_name,
+                "agent_id": identity.agent_id,
                 "reason": reason,
                 "latency_ms": round(elapsed, 2),
                 "target_status": resp.status_code,

@@ -236,6 +236,11 @@ def _run_policy_validate(args):
     for name, tool in sorted(policy.tools.items()):
         status = "allow" if tool.allow else "deny"
         print(f"    - {name}: {status}")
+    if policy.agents:
+        print(f"  agents:   {len(policy.agents)}")
+        for agent_id, agent in sorted(policy.agents.items()):
+            scope = "all tools" if "*" in agent.tools else ", ".join(agent.tools)
+            print(f"    - {agent_id} (token: ${agent.token_env}): {scope}")
 
 
 def _run_policy_suggest(args):
