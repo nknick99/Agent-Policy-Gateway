@@ -96,6 +96,21 @@ process serves the gateway, auth, and demo APIs.
 
 ## Quick Start
 
+### Install (pip)
+
+```bash
+pip install agent-policy-gateway          # core CLI, zero infra
+pip install "agent-policy-gateway[aws]"   # + AWS STS credential broker (optional)
+
+apg init                                  # write a starter policy.json
+apg policy validate policy.json           # confirm it loads and is default-deny
+apg proxy --target http://localhost:9000 --policy policy.json
+```
+
+The core install has no AWS dependency — the happy path (proxy, `wrap`, policy
+tooling, audit) needs no cloud services. The dashboard is an optional separate
+app (see Docker below).
+
 ### Docker (one command)
 
 ```bash

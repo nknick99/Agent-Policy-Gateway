@@ -5,7 +5,7 @@ PYTHON ?= python3.13
 VENV := .venv
 BIN := $(VENV)/bin
 
-.PHONY: help dev test lint typecheck check validate run proxy demo clean
+.PHONY: help dev test lint typecheck check validate run proxy demo dist publish clean
 
 help:
 	@echo "make dev        - create venv and install with dev dependencies"
@@ -17,6 +17,8 @@ help:
 	@echo "make run        - run the gateway (needs APG_AGENT_TOKEN)"
 	@echo "make proxy      - run the standalone CLI proxy (TARGET=http://...)"
 	@echo "make demo       - run the CLI enforcement demo"
+	@echo "make dist       - build sdist + wheel into dist/ and twine-check them"
+	@echo "make publish    - upload dist/* to PyPI (needs a PyPI token)"
 	@echo "make clean      - remove venv and caches"
 
 $(BIN)/python:
@@ -47,6 +49,15 @@ proxy: dev
 
 demo: dev
 	$(BIN)/apg demo
+
+dist: dev
+	$(BIN)/pip install -q build twine
+	rm -rf dist
+	$(BIN)/python -m build
+	$(BIN)/twine check dist/*
+
+publish: dist
+	$(BIN)/twine upload dist/*
 
 clean:
 	rm -rf $(VENV) .pytest_cache .mypy_cache .ruff_cache

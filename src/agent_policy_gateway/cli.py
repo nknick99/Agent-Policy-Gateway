@@ -513,6 +513,8 @@ def _run_init(args):
     policy = {
         "version": 1,
         "default": "deny",
+        "credential_broker": "none",
+        "caller_auth": {"method": "shared_token", "token_env": "APG_AGENT_TOKEN"},
         "session_limits": {
             "max_calls_per_session": 200,
             "max_records_per_session": 5000,
@@ -522,10 +524,8 @@ def _run_init(args):
                 "allow": True,
                 "operations": ["select"],
                 "tables": [],
+                "sql": {"dialect": "", "params": ["query", "sql"]},
                 "constraints": {"limit": {"max": 100}},
-                "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"],
-                "destination_whitelist": [],
-                "deny_destinations": [],
             },
             "http.get": {
                 "allow": True,
