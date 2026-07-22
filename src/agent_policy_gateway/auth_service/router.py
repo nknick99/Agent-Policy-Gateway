@@ -11,19 +11,24 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from agent_policy_gateway.auth_service.provider import LocalAuthProvider, UserInfo
+from agent_policy_gateway.auth_service.oidc import build_auth_provider
+from agent_policy_gateway.auth_service.provider import UserInfo
 from agent_policy_gateway.auth_service.tokens import create_token, verify_token
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# The active auth provider — swap this for SSO
-_provider = LocalAuthProvider()
+# Local credentials by default; OIDC/SSO when APG_OIDC_ISSUER is set.
+_provider = build_auth_provider()
 
 
 class LoginRequest(BaseModel):
     workspace: str
     email: str
     password: str
+
+
+class SsoRequest(BaseModel):
+    token: str
 
 
 class LoginResponse(BaseModel):
@@ -67,6 +72,26 @@ async def login(payload: LoginRequest) -> LoginResponse:
         expires_in=3600,
         user=user,
     )
+
+
+@router.post("/sso", response_model=LoginResponse)
+async def sso_login(payload: SsoRequest) -> LoginResponse:
+    """Exchange a validated OIDC/SSO token for an APG session token.
+
+    Only functional when an SSO provider is configured (APG_OIDC_ISSUER);
+    otherwise the token is rejected.
+    """
+    user = _provider.validate_sso_token(payload.token)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid SSO token")
+
+    token = create_token(
+        user_id=user.user_id,
+        email=user.email,
+        workspace=user.workspace,
+        role=user.role,
+    )
+    return LoginResponse(token=token, expires_in=3600, user=user)
 
 
 @router.get("/me", response_model=MeResponse)

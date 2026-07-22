@@ -384,6 +384,7 @@ APG adds on top is the numbers above.
 | `APG_OPERATOR_WORKSPACE` | Workspace identifier (required; no default) |
 | `APG_OPERATOR_PASSWORD_HASH` | argon2 hash of the operator password — generate with `apg hash-password` |
 | `APG_OPERATOR_PASSWORD` | Plaintext operator password (dev-only fallback if no hash is set) |
+| `APG_OIDC_ISSUER` | Set to switch operator auth to OIDC/SSO (validates SSO JWTs via `POST /api/auth/sso`). With `APG_OIDC_AUDIENCE`, `APG_OIDC_JWKS_URI`, and optional claim-name overrides. Needs the `[server]` extra |
 | `LLM_PROVIDER` | `mock`, `ollama`, `openai`, `anthropic`, `microservice` |
 | `DATABASE_URL` | PostgreSQL connection string |
 
