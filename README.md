@@ -317,6 +317,18 @@ The audit trail is append-only — there is no update or delete path.
 
 ---
 
+## Compliance
+
+APG's controls (default-deny action policy, per-agent least privilege, egress
+control, structured SQL enforcement, and the durable audit trail) map to common
+AI-governance and security frameworks — NIST AI RMF, NIST SP 800-53, the EU AI
+Act (Art. 12 logging / Art. 14 human oversight / Art. 15 robustness), and SOC 2
+Common Criteria. See **[docs/compliance-mapping.md](docs/compliance-mapping.md)**
+for the control-by-control mapping and how to produce evidence, along with an
+honest statement of what APG does *not* cover.
+
+---
+
 ## Performance
 
 The **enforcement decision** (auth + policy + egress) is in-process and
