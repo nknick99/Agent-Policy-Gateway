@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS policy_history (
     loaded_by VARCHAR(100)
 );
 
--- Seed default operator account
-INSERT INTO users (email, workspace, password_hash, role)
-VALUES ('admin@apg.dev', 'apg', 'apg-demo', 'operator')
-ON CONFLICT (email) DO NOTHING;
+-- No default operator account is seeded (no shipped credentials).
+-- Operator auth is configured via environment variables:
+--   APG_OPERATOR_EMAIL / APG_OPERATOR_WORKSPACE and an argon2
+--   APG_OPERATOR_PASSWORD_HASH (generate with `apg hash-password`).
+-- If you later persist operators in this table, store only argon2 hashes.

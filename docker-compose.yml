@@ -35,8 +35,10 @@ services:
       - APG_AGENT_TOKEN=${APG_AGENT_TOKEN:-secure-production-token}
       - APG_JWT_SECRET=${APG_JWT_SECRET:-change-me-in-production}
       - APG_OPERATOR_EMAIL=${APG_OPERATOR_EMAIL:-admin@apg.dev}
-      - APG_OPERATOR_PASSWORD=${APG_OPERATOR_PASSWORD:-apg-demo}
       - APG_OPERATOR_WORKSPACE=${APG_OPERATOR_WORKSPACE:-apg}
+      # argon2 hash of the demo password "apg-demo" — no plaintext in the image.
+      # Override with your own hash (apg hash-password) in production.
+      - APG_OPERATOR_PASSWORD_HASH=${APG_OPERATOR_PASSWORD_HASH:-$$argon2id$$v=19$$m=65536,t=3,p=4$$Ty7Ydlp6wSWeSQfvT7EHhg$$61pLUjO2+Fmc6L4jVcrqQ1bLTtYy0sGzKlIP+HmmzhE}
       - AWS_ENDPOINT_URL=http://floci:4566
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test

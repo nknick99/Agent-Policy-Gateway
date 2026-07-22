@@ -175,6 +175,17 @@ def main():
         help="Keep watching and print new events as they arrive",
     )
 
+    # --- hash-password command ---
+    hash_parser = subparsers.add_parser(
+        "hash-password",
+        help="Generate an argon2 hash for APG_OPERATOR_PASSWORD_HASH",
+    )
+    hash_parser.add_argument(
+        "password",
+        nargs="?",
+        help="Password to hash (omit to be prompted without echo)",
+    )
+
     # --- init command ---
     init_parser = subparsers.add_parser(
         "init",
@@ -200,6 +211,8 @@ def main():
         _run_policy(args)
     elif args.command == "audit":
         _run_audit(args)
+    elif args.command == "hash-password":
+        _run_hash_password(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -511,6 +524,30 @@ def _run_demo():
     print("Agent Policy Gateway blocked 3/4 requests. The one allowed request")
     print("would have sensitive fields (SSN, passwords) redacted")
     print("from the response before returning to the agent.")
+
+
+def _run_hash_password(args):
+    """Print an argon2 hash for use as APG_OPERATOR_PASSWORD_HASH."""
+    try:
+        from argon2 import PasswordHasher
+    except ImportError:
+        print(
+            "ERROR: argon2 is not installed. Install the server extra:\n"
+            '  pip install "agent-policy-gateway[server]"',
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    password = args.password
+    if not password:
+        import getpass
+
+        password = getpass.getpass("Password: ")
+    if not password:
+        print("ERROR: empty password", file=sys.stderr)
+        sys.exit(2)
+
+    print(PasswordHasher().hash(password))
 
 
 def _run_init(args):

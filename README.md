@@ -117,7 +117,9 @@ app (see Docker below).
 docker compose up --build
 ```
 
-Open http://localhost:3000 — login with `admin@apg.dev` / `apg-demo` / workspace `apg`.
+Open http://localhost:3000 — login with `admin@apg.dev` / `apg-demo` / workspace `apg`
+(the compose file stores the demo password as an argon2 hash, not plaintext;
+change it for anything real via `apg hash-password`).
 
 ### Without Docker
 
@@ -344,10 +346,11 @@ APG adds on top is the numbers above.
 | `APG_REDIS_URL` | `redis://…` — use a shared Redis session/quota store (required for correct quotas across replicas). Unset → in-memory. Needs `pip install "agent-policy-gateway[redis]"` |
 | `APG_SESSION_TTL_SECONDS` | Optional expiry for idle Redis sessions |
 | `AWS_ENDPOINT_URL` | STS endpoint (e.g. Floci/LocalStack); unset → real AWS. Only used with `credential_broker: aws_sts` |
-| `APG_JWT_SECRET` | Secret for signing operator JWTs |
-| `APG_OPERATOR_EMAIL` | Operator login email |
-| `APG_OPERATOR_PASSWORD` | Operator login password |
-| `APG_OPERATOR_WORKSPACE` | Workspace identifier |
+| `APG_JWT_SECRET` | Secret for signing operator JWTs (PyJWT, HS256; ≥32 bytes). No built-in default — required to issue/verify operator tokens |
+| `APG_OPERATOR_EMAIL` | Operator login email (required; no default) |
+| `APG_OPERATOR_WORKSPACE` | Workspace identifier (required; no default) |
+| `APG_OPERATOR_PASSWORD_HASH` | argon2 hash of the operator password — generate with `apg hash-password` |
+| `APG_OPERATOR_PASSWORD` | Plaintext operator password (dev-only fallback if no hash is set) |
 | `LLM_PROVIDER` | `mock`, `ollama`, `openai`, `anthropic`, `microservice` |
 | `DATABASE_URL` | PostgreSQL connection string |
 
@@ -407,7 +410,7 @@ Agent-Policy-Gateway/
 │   │   └── audit/stdout.py         # structured audit sink
 │   ├── server/app.py               # FastAPI wiring (all routers + /rpc)
 │   ├── main.py                     # uvicorn entry point shim
-│   ├── cli.py                      # apg CLI (proxy / wrap / demo / init / policy ... / audit tail)
+│   ├── cli.py                      # apg CLI (proxy / wrap / demo / init / policy / audit / hash-password)
 │   ├── proxy_app.py                # standalone transparent proxy
 │   ├── auth_service/               # operator JWT + pluggable providers
 │   ├── dashboard_api/              # REST API for frontend
