@@ -14,9 +14,29 @@ cases:
     params: {op: drop, query: "DROP TABLE users"}
     expect: deny
 
-  - name: DELETE keyword is blocked
+  - name: DELETE is blocked (parsed operation, even if op field lies)
     method: db.query
     params: {op: select, query: "DELETE FROM users"}
+    expect: deny
+
+  - name: multi-statement injection is blocked on the piggybacked DROP
+    method: db.query
+    params: {query: "SELECT * FROM users; DROP TABLE users"}
+    expect: deny
+
+  - name: a DROP hidden in a comment does not falsely deny a SELECT
+    method: db.query
+    params: {query: "SELECT name FROM users WHERE 1=1 -- DROP TABLE users"}
+    expect: allow
+
+  - name: querying an out-of-scope table is blocked
+    method: db.query
+    params: {query: "SELECT * FROM secrets"}
+    expect: deny
+
+  - name: unparseable SQL fails closed
+    method: db.query
+    params: {query: "!!! not sql ((("}
     expect: deny
 
   - name: unknown tool is denied by default

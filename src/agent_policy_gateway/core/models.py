@@ -55,6 +55,20 @@ class Constraints(BaseModel):
     limit: dict[str, int] | None = None
 
 
+class SqlPolicy(BaseModel):
+    """Opt-in SQL parsing for a tool.
+
+    When present, the engine parses the SQL string found under one of `params`
+    and enforces the tool's `operations`/`tables` allowlists against the
+    *parsed* operation and tables — deterministic, not substring matching.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    dialect: str = ""  # "" -> sqlglot's default parser
+    params: list[str] = ["query", "sql"]  # request keys the SQL string lives under
+
+
 class ToolConfig(BaseModel):
     """Configuration for a single tool in the policy document."""
 
@@ -71,6 +85,8 @@ class ToolConfig(BaseModel):
     session_policy: dict = {}
     # Per-tool execution target; falls back to APG_TARGET_URL when empty
     target_url: str = ""
+    # Opt-in real SQL parsing; None keeps behavior unchanged (no parsing)
+    sql: SqlPolicy | None = None
 
 
 class PolicyDocument(BaseModel):

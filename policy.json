@@ -14,11 +14,12 @@
     "db.query": {
       "allow": true,
       "operations": ["select"],
-      "tables": ["users", "orders", "products"],
+      "tables": ["users", "orders", "products", "customers"],
+      "sql": {"dialect": "", "params": ["query", "sql"]},
       "constraints": {
         "limit": {"max": 100}
       },
-      "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"],
+      "deny_keywords": [],
       "destination_whitelist": [],
       "deny_destinations": [],
       "aws_role": "arn:aws:iam::123456789012:role/APG-DBQuery",

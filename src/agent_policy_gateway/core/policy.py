@@ -18,6 +18,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from agent_policy_gateway.core.models import Decision, PolicyDocument, ToolConfig
+from agent_policy_gateway.core.sql import SqlParseError, analyze_sql
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,14 @@ class PolicyEvaluator:
                 reason=f"Tool '{method}' is disabled (allow=false)",
             )
 
+        # Step 2.5: SQL analysis — derive operation/tables from the query text
+        # itself (deterministic, parser-based) when the tool opts in. Runs
+        # before the self-declared op/table checks because the parsed statement
+        # is the source of truth an attacker cannot forge via a separate field.
+        sql_result = self._check_sql(tool_config, params)
+        if sql_result is not None:
+            return sql_result
+
         # Step 3: Operation check (Requirement 3.3, skip per 3.10)
         if "op" in params:
             op_result = self.check_operation(tool_config, params["op"])
@@ -198,6 +207,64 @@ class PolicyEvaluator:
             reason=f"All policy checks passed for tool '{method}'",
             tool_config=tool_config.model_dump(),
         )
+
+    def _check_sql(
+        self, tool_config: ToolConfig, params: dict[str, Any]
+    ) -> PolicyResult | None:
+        """Parse the tool's SQL and enforce operation/table allowlists on it.
+
+        No-op unless the tool opts in via `sql`. Fails closed: SQL that cannot
+        be parsed is denied, because a statement the gateway can't understand is
+        one it can't vouch for. Every statement in a multi-statement query is
+        checked, so a piggybacked `DROP` cannot ride along with a `SELECT`.
+        """
+        sql_cfg = tool_config.sql
+        if sql_cfg is None:
+            return None
+
+        sql_text: str | None = None
+        for key in sql_cfg.params:
+            value = params.get(key)
+            if isinstance(value, str) and value.strip():
+                sql_text = value
+                break
+        if sql_text is None:
+            # Tool opted into SQL parsing but this call carries no SQL string —
+            # nothing to analyze here; other checks still apply.
+            return None
+
+        try:
+            analysis = analyze_sql(sql_text, sql_cfg.dialect or None)
+        except SqlParseError as exc:
+            return PolicyResult(
+                decision=Decision.DENY,
+                rule_matched="sql_unparseable",
+                reason=f"SQL could not be parsed for enforcement: {exc}",
+            )
+
+        for operation in sorted(analysis.operations):
+            if self.check_operation(tool_config, operation) is not None:
+                return PolicyResult(
+                    decision=Decision.DENY,
+                    rule_matched="operation_not_allowed",
+                    reason=(
+                        f"SQL operation '{operation}' is not in the allowed "
+                        "operations list"
+                    ),
+                )
+
+        for table in sorted(analysis.tables):
+            if self.check_resource_scope(tool_config, table) is not None:
+                return PolicyResult(
+                    decision=Decision.DENY,
+                    rule_matched="resource_out_of_scope",
+                    reason=(
+                        f"SQL references table '{table}' which is not in the "
+                        "allowed tables list"
+                    ),
+                )
+
+        return None
 
     def check_operation(self, tool_config: ToolConfig, op: str) -> PolicyResult | None:
         """Check if operation is in the tool's operations allowlist.

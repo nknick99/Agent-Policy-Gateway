@@ -195,13 +195,14 @@ The policy is a JSON allowlist loaded at startup. Maps directly to MCP `tools/ca
       "allow": true,
       "operations": ["select"],
       "tables": ["customers", "orders"],
-      "deny_keywords": ["DROP", "DELETE", "UPDATE", "INSERT"],
+      "sql": {"dialect": "", "params": ["query", "sql"]},
       "target_url": "http://localhost:9000/rpc"
     },
     "http.post": {
       "allow": true,
       "destination_whitelist": ["https://api.example.com"],
-      "deny_destinations": ["169.254.169.254"]
+      "deny_destinations": ["169.254.169.254"],
+      "deny_keywords": ["password", "secret"]
     }
   }
 }
@@ -213,6 +214,15 @@ The policy is a JSON allowlist loaded at startup. Maps directly to MCP `tools/ca
 - `target_url`: per-tool execution target; falls back to the `APG_TARGET_URL`
   environment variable. If neither is set, an allowed request fails closed
   rather than returning fabricated data.
+- `sql`: opt into real SQL parsing (via `sqlglot`). The SQL string found under
+  one of `params` is parsed, and the `operations`/`tables` allowlists are
+  enforced against the **parsed** operation and tables — not a self-declared
+  `op` field or substring matching. This is deterministic and hard to fool:
+  `SELECT ...; DROP TABLE x` is blocked on the piggybacked `DROP`, a `DROP`
+  hidden in a `-- comment` is inert, and SQL that can't be parsed fails closed.
+- `deny_keywords`: case-insensitive substring denial for **free-text** payloads
+  (e.g. blocking `password`/`secret` in an `http.post` body). For SQL, prefer
+  `sql` above — structured parsing beats keyword matching.
 
 ---
 
