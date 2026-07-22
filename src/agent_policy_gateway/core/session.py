@@ -1,11 +1,37 @@
-"""In-memory per-caller session tracking and quota enforcement."""
+"""Per-caller session tracking and quota enforcement.
+
+`SessionStore` is the port the enforcement pipeline depends on. `SessionManager`
+is the in-memory implementation (the default, single-process). A Redis-backed
+implementation lives in `adapters/state/` so quotas are shared — and therefore
+correct — across multiple replicas (in-memory dicts would multiply the real
+limit by the replica count; this is defect D7).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import uuid
+from typing import Protocol, runtime_checkable
 
 from agent_policy_gateway.core.models import SessionLimits, SessionState
+
+
+@runtime_checkable
+class SessionStore(Protocol):
+    """Shared quota state for the enforcement pipeline.
+
+    The pipeline checks quota before acting and records success after. Any
+    backend (in-memory, Redis, …) that implements these two coroutines is
+    substitutable.
+    """
+
+    async def check_quota(self, caller_id: str, limits: SessionLimits) -> bool:
+        """Return True if the caller is over quota (request must be denied)."""
+        ...
+
+    async def record_success(self, caller_id: str, record_count: int = 0) -> None:
+        """Record one successful call (and any records it returned)."""
+        ...
 
 
 class SessionManager:
@@ -69,3 +95,8 @@ class SessionManager:
             session.increment_calls()
             if record_count > 0:
                 session.add_records(record_count)
+
+
+# Clearer name for the in-memory implementation; SessionManager is kept for
+# backward compatibility.
+InMemorySessionStore = SessionManager

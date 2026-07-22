@@ -341,6 +341,8 @@ APG adds on top is the numbers above.
 | `APG_AGENT_TOKEN` | Bearer token for agent authentication |
 | `APG_TARGET_URL` | Default execution target for allowed requests (per-tool `target_url` overrides) |
 | `APG_MODE` | `enforce` or `audit` |
+| `APG_REDIS_URL` | `redis://…` — use a shared Redis session/quota store (required for correct quotas across replicas). Unset → in-memory. Needs `pip install "agent-policy-gateway[redis]"` |
+| `APG_SESSION_TTL_SECONDS` | Optional expiry for idle Redis sessions |
 | `AWS_ENDPOINT_URL` | STS endpoint (e.g. Floci/LocalStack); unset → real AWS. Only used with `credential_broker: aws_sts` |
 | `APG_JWT_SECRET` | Secret for signing operator JWTs |
 | `APG_OPERATOR_EMAIL` | Operator login email |
@@ -353,11 +355,13 @@ APG adds on top is the numbers above.
 
 ## Deploy to Kubernetes
 
-> **Note:** the `k8s/` manifests still describe the pre-consolidation
-> multi-service layout and assume in-memory session state. They are
-> quarantined pending the Phase 3 update (single backend image +
-> Redis-backed sessions so multi-replica is correct). See `k8s/README.md`.
-> For now, use `docker compose up --build`.
+> **Multi-replica note:** session/quota state is behind a `SessionStore` port.
+> The default is in-memory (single process); set `APG_REDIS_URL` to use a shared
+> Redis store so quotas are counted once across all replicas rather than N times
+> (this was defect D7). The `k8s/` manifests still describe the pre-consolidation
+> multi-service layout and need updating to the single backend image + a Redis
+> service before re-publishing. See `k8s/README.md`. For now, use
+> `docker compose up --build`.
 
 Once updated, with `credential_broker: aws_sts`, remove `AWS_ENDPOINT_URL`
 from the backend env to use real AWS STS instead of a local emulator.

@@ -24,12 +24,13 @@ from agent_policy_gateway.adapters.identity.shared_token import (
     authenticate_caller,
     validate_startup,
 )
+from agent_policy_gateway.adapters.state import build_session_store
 from agent_policy_gateway.auth_service import auth_router
 from agent_policy_gateway.core.audit import AuditEvent
 from agent_policy_gateway.core.mode import ModeController
 from agent_policy_gateway.core.pipeline import EnforcementPipeline
 from agent_policy_gateway.core.policy import PolicyEvaluator
-from agent_policy_gateway.core.session import SessionManager
+from agent_policy_gateway.core.session import SessionStore
 from agent_policy_gateway.dashboard_api import dashboard_router
 from agent_policy_gateway.live_demo.router import router as live_demo_router
 
@@ -37,7 +38,7 @@ from agent_policy_gateway.live_demo.router import router as live_demo_router
 
 audit_logger: AuditLogger
 policy_evaluator: PolicyEvaluator
-session_manager: SessionManager
+session_manager: SessionStore
 mode_controller: ModeController
 pipeline: EnforcementPipeline
 
@@ -81,7 +82,9 @@ async def lifespan(app: FastAPI):
     policy_evaluator = PolicyEvaluator()
 
     audit_logger = AuditLogger()
-    session_manager = SessionManager()
+    # In-memory by default; Redis when APG_REDIS_URL is set (shared across
+    # replicas — required for correct quotas in a multi-replica deployment).
+    session_manager = build_session_store()
     mode_controller = ModeController()
 
     pipeline = EnforcementPipeline(

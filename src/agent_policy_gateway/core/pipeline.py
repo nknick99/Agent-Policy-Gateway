@@ -35,7 +35,7 @@ from agent_policy_gateway.core.mode import ModeController
 from agent_policy_gateway.core.models import AuditDecision, Decision
 from agent_policy_gateway.core.policy import PolicyEvaluator
 from agent_policy_gateway.core.schemas import SchemaValidationError, validate_envelope
-from agent_policy_gateway.core.session import SessionManager
+from agent_policy_gateway.core.session import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ class EnforcementPipeline:
         self,
         *,
         evaluator: PolicyEvaluator,
-        session_manager: SessionManager,
+        session_manager: SessionStore,
         broker: CredentialBroker,
         audit_sink: AuditSink,
         mode_controller: ModeController,
