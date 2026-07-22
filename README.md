@@ -303,6 +303,8 @@ target picks the backend automatically:
 |--------|---------|
 | `apg-audit.jsonl` (default) | JSONL — one JSON object per line, zero deps |
 | `audit.db` / `*.sqlite` / `sqlite:///path.db` | SQLite — durable and indexed |
+| `syslog://host:514` (or `syslog+tcp://…`) | CEF over syslog to a SIEM (Splunk/ArcSight/QRadar/…) |
+| `splunk-hec://<token>@host:8088` | Splunk HTTP Event Collector (posted off the request path) |
 
 Inspect it with `apg audit tail` (works against either backend):
 
