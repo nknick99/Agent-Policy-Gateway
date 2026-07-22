@@ -241,6 +241,30 @@ entries you review and merge.
 
 ---
 
+## Audit trail
+
+Every request (proxy or `wrap`) writes one append-only audit event with a
+correlation id, the decision, the rule/reason, and latency. The `--audit-file`
+target picks the backend automatically:
+
+| Target | Backend |
+|--------|---------|
+| `apg-audit.jsonl` (default) | JSONL — one JSON object per line, zero deps |
+| `audit.db` / `*.sqlite` / `sqlite:///path.db` | SQLite — durable and indexed |
+
+Inspect it with `apg audit tail` (works against either backend):
+
+```bash
+apg audit tail                                  # last 20 events
+apg audit tail --audit-file audit.db --limit 50 # from a SQLite store
+apg audit tail --outcome DENY                   # only denials
+apg audit tail --follow                          # stream new events live
+```
+
+The audit trail is append-only — there is no update or delete path.
+
+---
+
 ## Performance
 
 The **enforcement decision** (auth + policy + egress) is in-process and
@@ -329,7 +353,7 @@ Agent-Policy-Gateway/
 │   │   └── audit/stdout.py         # structured audit sink
 │   ├── server/app.py               # FastAPI wiring (all routers + /rpc)
 │   ├── main.py                     # uvicorn entry point shim
-│   ├── cli.py                      # apg CLI (proxy / wrap / demo / init / policy validate|suggest|test)
+│   ├── cli.py                      # apg CLI (proxy / wrap / demo / init / policy ... / audit tail)
 │   ├── proxy_app.py                # standalone transparent proxy
 │   ├── auth_service/               # operator JWT + pluggable providers
 │   ├── dashboard_api/              # REST API for frontend

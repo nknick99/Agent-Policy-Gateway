@@ -26,7 +26,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_policy_gateway.adapters.audit.jsonl import attempt_summary, write_event
+from agent_policy_gateway.adapters.audit import build_audit_sink
+from agent_policy_gateway.adapters.audit.jsonl import attempt_summary
 from agent_policy_gateway.core.enforcement import evaluate_call
 from agent_policy_gateway.core.policy import PolicyEvaluator
 
@@ -145,6 +146,7 @@ async def run_stdio_proxy(
     JSON-RPC channel on stdout). Returns the child's exit code.
     """
     loop = asyncio.get_running_loop()
+    audit_sink = build_audit_sink(audit_file)
     proc = await asyncio.create_subprocess_exec(
         *command,
         stdin=asyncio.subprocess.PIPE,
@@ -169,9 +171,8 @@ async def run_stdio_proxy(
             start = time.monotonic()
             result = route_message(line, evaluator, mode)
             if result.method is not None:
-                write_event(
-                    audit_file,
-                    _audit_event(result, mode, (time.monotonic() - start) * 1000),
+                audit_sink.write(
+                    _audit_event(result, mode, (time.monotonic() - start) * 1000)
                 )
             if result.forward:
                 if proc.stdin is not None:
@@ -208,6 +209,7 @@ async def run_stdio_proxy(
     for task in pumps:
         task.cancel()
     await asyncio.gather(*pumps, return_exceptions=True)
+    audit_sink.close()
     return proc.returncode or 0
 
 

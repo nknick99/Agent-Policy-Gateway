@@ -9,6 +9,7 @@ imports, lets both transports write the same audit schema that
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 
@@ -40,3 +41,41 @@ def attempt_summary(params: dict[str, Any]) -> dict[str, Any]:
     if isinstance(destination, str) and destination:
         summary["destination"] = destination
     return summary
+
+
+class JsonlAuditSink:
+    """Append-only JSONL audit sink — the zero-dependency default."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def write(self, event: dict[str, Any]) -> None:
+        write_event(self.path, event)
+
+    def read(
+        self, limit: int | None = None, outcome: str | None = None
+    ) -> list[dict[str, Any]]:
+        path = Path(self.path)
+        if not path.exists():
+            return []
+        events: list[dict[str, Any]] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            if outcome and str(event.get("outcome", "")).upper() != outcome.upper():
+                continue
+            events.append(event)
+        if limit is not None:
+            events = events[-limit:]
+        return events
+
+    def close(self) -> None:
+        # Each write opens and closes the file; nothing persistent to release.
+        pass

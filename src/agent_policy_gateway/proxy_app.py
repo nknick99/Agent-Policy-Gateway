@@ -17,6 +17,7 @@ import json
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +25,8 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from agent_policy_gateway.adapters.audit import build_audit_sink
 from agent_policy_gateway.adapters.audit.jsonl import attempt_summary as _attempt_summary
-from agent_policy_gateway.adapters.audit.jsonl import write_event as _write_audit
 from agent_policy_gateway.adapters.identity.shared_token import authenticate_caller
 from agent_policy_gateway.core.enforcement import evaluate_call
 from agent_policy_gateway.core.models import PolicyDocument
@@ -93,7 +94,21 @@ def create_proxy_app(
     """Create a transparent MCP proxy with policy enforcement."""
 
     evaluator = build_evaluator(policy_path)
-    app = FastAPI(title="Agent Policy Gateway Proxy", docs_url=None, redoc_url=None)
+    audit_sink = build_audit_sink(audit_file)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        try:
+            yield
+        finally:
+            audit_sink.close()
+
+    app = FastAPI(
+        title="Agent Policy Gateway Proxy",
+        docs_url=None,
+        redoc_url=None,
+        lifespan=lifespan,
+    )
 
     @app.get("/health")
     async def health():
@@ -132,7 +147,7 @@ def create_proxy_app(
         token = auth_header.removeprefix("Bearer ").strip()
         if not authenticate_caller(token):
             elapsed = (time.monotonic() - start) * 1000
-            _write_audit(audit_file, {
+            audit_sink.write({
                 "correlation_id": correlation_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
                 "outcome": "DENY",
@@ -161,7 +176,7 @@ def create_proxy_app(
             if not result["allowed"] and mode == "enforce":
                 # DENIED — don't forward to target
                 elapsed = (time.monotonic() - start) * 1000
-                _write_audit(audit_file, {
+                audit_sink.write({
                     "correlation_id": correlation_id,
                     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
                     "outcome": "DENY",
@@ -205,7 +220,7 @@ def create_proxy_app(
 
         # ─── Audit log ───
         if is_tool_call:
-            _write_audit(audit_file, {
+            audit_sink.write({
                 "correlation_id": correlation_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
                 "outcome": "ALLOW" if outcome == "ALLOWED" else outcome,

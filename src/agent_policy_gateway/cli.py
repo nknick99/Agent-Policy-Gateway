@@ -142,6 +142,39 @@ def main():
         help="Policy to test (default: ./policy.json)",
     )
 
+    # --- audit command (tail) ---
+    audit_parser = subparsers.add_parser(
+        "audit",
+        help="Inspect the audit trail",
+    )
+    audit_sub = audit_parser.add_subparsers(dest="audit_action")
+    tail_parser = audit_sub.add_parser(
+        "tail",
+        help="Show recent audit events (JSONL or SQLite)",
+    )
+    tail_parser.add_argument(
+        "--audit-file",
+        default="apg-audit.jsonl",
+        help="Audit target: a .jsonl file or a sqlite .db (default: ./apg-audit.jsonl)",
+    )
+    tail_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Number of most-recent events to show (default: 20)",
+    )
+    tail_parser.add_argument(
+        "--outcome",
+        default=None,
+        help="Filter by outcome, e.g. DENY, ALLOW, PASS_THROUGH",
+    )
+    tail_parser.add_argument(
+        "--follow",
+        "-f",
+        action="store_true",
+        help="Keep watching and print new events as they arrive",
+    )
+
     # --- init command ---
     init_parser = subparsers.add_parser(
         "init",
@@ -165,6 +198,8 @@ def main():
         _run_init(args)
     elif args.command == "policy":
         _run_policy(args)
+    elif args.command == "audit":
+        _run_audit(args)
     else:
         parser.print_help()
         sys.exit(1)
@@ -374,6 +409,50 @@ def _run_wrap(args):
 
     exit_code = wrap(command, evaluator, audit_file=args.audit_file, mode=args.mode)
     sys.exit(exit_code)
+
+
+def _format_audit_event(event: dict) -> str:
+    """Render one audit event as a compact, aligned line."""
+    timestamp = event.get("timestamp", "-")
+    outcome = event.get("outcome", "-")
+    method = event.get("method") or "-"
+    latency = event.get("latency_ms")
+    latency_str = f"{latency}ms" if latency is not None else ""
+    reason = event.get("reason") or ""
+    return f"{timestamp}  {outcome:<12}  {method:<14}  {latency_str:<9}  {reason}"
+
+
+def _run_audit(args):
+    """Inspect the audit trail: currently `audit tail`."""
+    if getattr(args, "audit_action", None) != "tail":
+        print(
+            "Usage: apg audit tail [--audit-file ...] [--limit N] "
+            "[--outcome DENY] [--follow]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    from agent_policy_gateway.adapters.audit import build_audit_sink
+
+    sink = build_audit_sink(args.audit_file)
+    try:
+        for event in sink.read(limit=args.limit, outcome=args.outcome):
+            print(_format_audit_event(event))
+
+        if args.follow:
+            print("-- watching for new events (Ctrl-C to stop) --", file=sys.stderr)
+            baseline = len(sink.read(outcome=args.outcome))
+            try:
+                while True:
+                    time.sleep(1.0)
+                    events = sink.read(outcome=args.outcome)
+                    for event in events[baseline:]:
+                        print(_format_audit_event(event), flush=True)
+                    baseline = len(events)
+            except KeyboardInterrupt:
+                pass
+    finally:
+        sink.close()
 
 
 def _run_demo():
