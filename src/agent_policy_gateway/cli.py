@@ -65,6 +65,33 @@ def main():
         help="enforce=block denied requests, audit=log but allow all (default: enforce)",
     )
 
+    # --- wrap command (stdio transport) ---
+    wrap_parser = subparsers.add_parser(
+        "wrap",
+        help="Wrap a stdio MCP server: apg wrap --policy policy.json -- npx some-mcp-server",
+    )
+    wrap_parser.add_argument(
+        "--policy",
+        default="policy.json",
+        help="Path to policy.json (default: ./policy.json)",
+    )
+    wrap_parser.add_argument(
+        "--audit-file",
+        default="apg-audit.jsonl",
+        help="Audit log file path (default: apg-audit.jsonl)",
+    )
+    wrap_parser.add_argument(
+        "--mode",
+        choices=["enforce", "audit"],
+        default="enforce",
+        help="enforce=block denied calls, audit=log but allow all (default: enforce)",
+    )
+    wrap_parser.add_argument(
+        "server_command",
+        nargs=argparse.REMAINDER,
+        help="-- followed by the command that starts the MCP server",
+    )
+
     # --- demo command ---
     subparsers.add_parser(
         "demo",
@@ -130,6 +157,8 @@ def main():
 
     if args.command == "proxy":
         _run_proxy(args)
+    elif args.command == "wrap":
+        _run_wrap(args)
     elif args.command == "demo":
         _run_demo()
     elif args.command == "init":
@@ -309,6 +338,42 @@ def _run_proxy(args):
         mode=args.mode,
     )
     uvicorn.run(app, host="0.0.0.0", port=args.port, log_level="info")
+
+
+def _run_wrap(args):
+    """Wrap a stdio MCP server subprocess with policy enforcement."""
+    from agent_policy_gateway.adapters.transports.stdio import wrap
+    from agent_policy_gateway.proxy_app import build_evaluator
+
+    command = list(args.server_command)
+    # argparse REMAINDER keeps the leading "--"; drop it.
+    if command and command[0] == "--":
+        command = command[1:]
+    if not command:
+        print(
+            "ERROR: no server command given.\n"
+            "Usage: apg wrap --policy policy.json -- npx some-mcp-server",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    policy_path = args.policy if Path(args.policy).exists() else None
+    if policy_path is None:
+        print(
+            f"WARNING: policy file not found ({args.policy}); using default deny-all",
+            file=sys.stderr,
+        )
+    evaluator = build_evaluator(policy_path)
+
+    # stdout is the JSON-RPC channel — every human-facing line goes to stderr.
+    print(f"apg: wrapping stdio MCP server: {' '.join(command)}", file=sys.stderr)
+    print(
+        f"apg: policy={args.policy} mode={args.mode} audit={args.audit_file}",
+        file=sys.stderr,
+    )
+
+    exit_code = wrap(command, evaluator, audit_file=args.audit_file, mode=args.mode)
+    sys.exit(exit_code)
 
 
 def _run_demo():

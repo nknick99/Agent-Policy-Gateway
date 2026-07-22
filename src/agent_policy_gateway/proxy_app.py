@@ -24,6 +24,8 @@ import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from agent_policy_gateway.adapters.audit.jsonl import attempt_summary as _attempt_summary
+from agent_policy_gateway.adapters.audit.jsonl import write_event as _write_audit
 from agent_policy_gateway.adapters.identity.shared_token import authenticate_caller
 from agent_policy_gateway.core.enforcement import evaluate_call
 from agent_policy_gateway.core.models import PolicyDocument
@@ -224,27 +226,3 @@ def create_proxy_app(
     return app
 
 
-def _attempt_summary(params: dict) -> dict:
-    """Extract the policy-relevant fields of an attempt for the audit log.
-
-    Only includes keys that are present, so audit lines stay compact. These
-    fields are what `apg policy suggest` mines to propose allowlist entries.
-    """
-    summary: dict[str, Any] = {}
-    for key in ("op", "table"):
-        value = params.get(key)
-        if isinstance(value, str) and value:
-            summary[key] = value
-    destination = params.get("url") or params.get("destination")
-    if isinstance(destination, str) and destination:
-        summary["destination"] = destination
-    return summary
-
-
-def _write_audit(audit_file: str, event: dict):
-    """Append audit event to JSONL file."""
-    try:
-        with open(audit_file, "a") as f:
-            f.write(json.dumps(event) + "\n")
-    except Exception:
-        pass  # Don't let audit failure break the proxy

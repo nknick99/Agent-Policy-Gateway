@@ -127,6 +127,24 @@ request must carry `Authorization: Bearer my-secret`; allowed calls are
 forwarded to the target, denied calls are blocked before it. No database,
 no AWS, no frontend required.
 
+### CLI (stdio MCP server)
+
+Most MCP servers run over stdio — the client spawns them as a subprocess.
+`apg wrap` inserts the gateway into that pipe:
+
+```bash
+apg wrap --policy policy.json -- npx @modelcontextprotocol/server-filesystem /data
+```
+
+Point your MCP client at `apg wrap -- <command>` as if it were the server. APG
+spawns the real server as its child and enforces policy on every `tools/call`:
+allowed calls (and all `initialize`/`tools/list` traffic) are forwarded
+verbatim; denied calls are answered with a JSON-RPC error and never reach the
+child. There's no network boundary, so no bearer token is needed — the trust
+boundary is the process spawn. stdout is the JSON-RPC channel; APG's own logs
+go to stderr. Add `--mode audit` to log denials without blocking (pair it with
+`apg policy suggest`).
+
 ### Policy tooling
 
 ```bash
@@ -301,7 +319,7 @@ Agent-Policy-Gateway/
 │   │   └── audit/stdout.py         # structured audit sink
 │   ├── server/app.py               # FastAPI wiring (all routers + /rpc)
 │   ├── main.py                     # uvicorn entry point shim
-│   ├── cli.py                      # apg CLI (proxy / demo / init / policy validate|suggest|test)
+│   ├── cli.py                      # apg CLI (proxy / wrap / demo / init / policy validate|suggest|test)
 │   ├── proxy_app.py                # standalone transparent proxy
 │   ├── auth_service/               # operator JWT + pluggable providers
 │   ├── dashboard_api/              # REST API for frontend
