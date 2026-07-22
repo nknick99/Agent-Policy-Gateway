@@ -25,8 +25,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from agent_policy_gateway.adapters.identity.shared_token import authenticate_caller
-from agent_policy_gateway.core.egress import EgressController
-from agent_policy_gateway.core.models import Decision, PolicyDocument
+from agent_policy_gateway.core.enforcement import evaluate_call
+from agent_policy_gateway.core.models import PolicyDocument
 from agent_policy_gateway.core.policy import (
     PolicyEvaluator,
     load_policy_document,
@@ -73,21 +73,9 @@ def evaluate_request(
     if evaluator is None:
         evaluator = build_evaluator(os.environ.get("APG_POLICY_PATH", "policy.json"))
 
-    result = evaluator.evaluate(method, params)
-    if result.decision == Decision.DENY:
-        return {"allowed": False, "outcome": "DENIED", "reason": result.reason}
-
-    # Egress control for tools that reach out to a destination
-    destination = params.get("url") or params.get("destination")
-    if destination and result.tool_config is not None:
-        egress_result = EgressController(result.tool_config).check(destination)
-        if not egress_result.allowed:
-            return {
-                "allowed": False,
-                "outcome": "DENIED",
-                "reason": f"Egress denied: {egress_result.reason}",
-            }
-
+    decision = evaluate_call(evaluator, method, params)
+    if not decision.allowed:
+        return {"allowed": False, "outcome": "DENIED", "reason": decision.reason}
     return {"allowed": True, "outcome": "ALLOWED", "reason": None}
 
 
@@ -179,6 +167,7 @@ def create_proxy_app(
                     "reason": result["reason"],
                     "latency_ms": round(elapsed, 2),
                     "mode": mode,
+                    **_attempt_summary(params),
                 })
 
                 # Return JSON-RPC error
@@ -223,6 +212,7 @@ def create_proxy_app(
                 "latency_ms": round(elapsed, 2),
                 "target_status": resp.status_code,
                 "mode": mode,
+                **_attempt_summary(params),
             })
 
         return JSONResponse(
@@ -232,6 +222,23 @@ def create_proxy_app(
         )
 
     return app
+
+
+def _attempt_summary(params: dict) -> dict:
+    """Extract the policy-relevant fields of an attempt for the audit log.
+
+    Only includes keys that are present, so audit lines stay compact. These
+    fields are what `apg policy suggest` mines to propose allowlist entries.
+    """
+    summary: dict[str, Any] = {}
+    for key in ("op", "table"):
+        value = params.get(key)
+        if isinstance(value, str) and value:
+            summary[key] = value
+    destination = params.get("url") or params.get("destination")
+    if isinstance(destination, str) and destination:
+        summary["destination"] = destination
+    return summary
 
 
 def _write_audit(audit_file: str, event: dict):

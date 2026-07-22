@@ -1,0 +1,40 @@
+# Unit tests for policy.json — run with: apg policy test policy.test.yaml
+#
+# Each case runs through the same enforcement engine the proxy uses, so a
+# passing suite proves the shipped policy allows what it should and blocks
+# what it shouldn't. Wire this into CI to catch policy edits that open holes.
+cases:
+  - name: a normal SELECT is allowed
+    method: db.query
+    params: {op: select, query: "SELECT name FROM users"}
+    expect: allow
+
+  - name: DROP is blocked (operation not allowed)
+    method: db.query
+    params: {op: drop, query: "DROP TABLE users"}
+    expect: deny
+
+  - name: DELETE keyword is blocked
+    method: db.query
+    params: {op: select, query: "DELETE FROM users"}
+    expect: deny
+
+  - name: unknown tool is denied by default
+    method: fs.read
+    params: {path: /etc/passwd}
+    expect: deny
+
+  - name: whitelisted egress is allowed
+    method: http.get
+    params: {op: GET, url: "https://api.example.com/status"}
+    expect: allow
+
+  - name: non-whitelisted egress is blocked
+    method: http.get
+    params: {op: GET, url: "https://evil.example.net/steal"}
+    expect: deny
+
+  - name: cloud-metadata SSRF is blocked
+    method: http.get
+    params: {op: GET, url: "http://169.254.169.254/latest/meta-data/"}
+    expect: deny

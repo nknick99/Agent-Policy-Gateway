@@ -127,11 +127,39 @@ request must carry `Authorization: Bearer my-secret`; allowed calls are
 forwarded to the target, denied calls are blocked before it. No database,
 no AWS, no frontend required.
 
-Validate a policy before shipping it:
+### Policy tooling
 
 ```bash
+# Check a policy loads, validates, and is default-deny (CI-friendly)
 apg policy validate policy.json
+
+# Unit-test a policy: run allow/deny assertions through the real engine.
+# Exits non-zero on any failure — wire it into CI.
+apg policy test policy.test.yaml
+
+# Learning mode: after running the proxy in --mode audit, mine the audit
+# log for blocked calls and print ready-to-paste allowlist entries.
+apg policy suggest --audit-file apg-audit.jsonl --policy policy.json
 ```
+
+`apg policy test` reads YAML cases (see `policy.test.yaml`):
+
+```yaml
+cases:
+  - name: a normal SELECT is allowed
+    method: db.query
+    params: {op: select, query: "SELECT name FROM users"}
+    expect: allow
+  - name: DROP is blocked
+    method: db.query
+    params: {op: drop}
+    expect: deny
+```
+
+`apg policy suggest` prints a `tools` snippet to stdout (commentary goes to
+stderr, so it pipes cleanly). Suggestions are deterministic and additive —
+it only proposes the minimal new permissions the observed traffic needed, and
+never loosens what the policy already allows.
 
 ---
 
@@ -177,7 +205,11 @@ The policy is a JSON allowlist loaded at startup. Maps directly to MCP `tools/ca
 | **Enforce** (default) | Denied requests are blocked. No execution. |
 | **Audit** | Denied requests are logged but still executed. Use for gradual rollout. |
 
-Set via `APG_MODE=enforce` or `APG_MODE=audit`.
+Set via `APG_MODE=enforce` or `APG_MODE=audit` (or `apg proxy --mode audit`).
+
+Audit mode is also how you author a policy without guessing: run real traffic
+through it, then `apg policy suggest` turns the logged denials into allowlist
+entries you review and merge.
 
 ---
 
@@ -269,7 +301,7 @@ Agent-Policy-Gateway/
 │   │   └── audit/stdout.py         # structured audit sink
 │   ├── server/app.py               # FastAPI wiring (all routers + /rpc)
 │   ├── main.py                     # uvicorn entry point shim
-│   ├── cli.py                      # apg CLI (proxy / demo / init / policy validate)
+│   ├── cli.py                      # apg CLI (proxy / demo / init / policy validate|suggest|test)
 │   ├── proxy_app.py                # standalone transparent proxy
 │   ├── auth_service/               # operator JWT + pluggable providers
 │   ├── dashboard_api/              # REST API for frontend

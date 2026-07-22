@@ -71,21 +71,48 @@ def main():
         help="Run an interactive demo showing Agent Policy Gateway enforcement",
     )
 
-    # --- policy command ---
+    # --- policy command (validate | suggest | test) ---
     policy_parser = subparsers.add_parser(
         "policy",
-        help="Policy tooling (validate)",
+        help="Policy tooling: validate, suggest (learning mode), test",
     )
-    policy_parser.add_argument(
-        "action",
-        choices=["validate"],
-        help="validate: check a policy file loads, validates, and is default-deny",
+    policy_sub = policy_parser.add_subparsers(dest="policy_action")
+
+    validate_parser = policy_sub.add_parser(
+        "validate",
+        help="Check a policy file loads, validates, and is default-deny",
     )
-    policy_parser.add_argument(
+    validate_parser.add_argument(
         "path",
         nargs="?",
         default="policy.json",
         help="Path to the policy file (default: ./policy.json)",
+    )
+
+    suggest_parser = policy_sub.add_parser(
+        "suggest",
+        help="Learning mode: read an audit log and propose allowlist entries",
+    )
+    suggest_parser.add_argument(
+        "--audit-file",
+        default="apg-audit.jsonl",
+        help="Audit log to analyze (default: ./apg-audit.jsonl)",
+    )
+    suggest_parser.add_argument(
+        "--policy",
+        default="policy.json",
+        help="Current policy to diff suggestions against (default: ./policy.json)",
+    )
+
+    test_parser = policy_sub.add_parser(
+        "test",
+        help="Run allow/deny assertions (YAML) against a policy",
+    )
+    test_parser.add_argument("testfile", help="Path to the YAML test file")
+    test_parser.add_argument(
+        "--policy",
+        default="policy.json",
+        help="Policy to test (default: ./policy.json)",
     )
 
     # --- init command ---
@@ -115,7 +142,21 @@ def main():
 
 
 def _run_policy(args):
-    """Policy tooling — currently: validate."""
+    """Dispatch policy tooling: validate | suggest | test."""
+    action = getattr(args, "policy_action", None)
+    if action == "validate":
+        _run_policy_validate(args)
+    elif action == "suggest":
+        _run_policy_suggest(args)
+    elif action == "test":
+        _run_policy_test(args)
+    else:
+        print("Usage: apg policy {validate|suggest|test} ...", file=sys.stderr)
+        sys.exit(1)
+
+
+def _run_policy_validate(args):
+    """Check a policy file loads, validates, and is default-deny."""
     from agent_policy_gateway.core.policy import PolicyLoadError, load_policy_document
 
     try:
@@ -131,6 +172,90 @@ def _run_policy(args):
     for name, tool in sorted(policy.tools.items()):
         status = "allow" if tool.allow else "deny"
         print(f"    - {name}: {status}")
+
+
+def _run_policy_suggest(args):
+    """Learning mode: mine an audit log for denied calls and propose entries."""
+    from agent_policy_gateway.core.learning import load_audit_events, suggest_entries
+    from agent_policy_gateway.core.policy import PolicyLoadError, load_policy_document
+
+    events = load_audit_events(args.audit_file)
+    if not events:
+        print(f"No audit events found in {args.audit_file}", file=sys.stderr)
+        print(
+            "Run the proxy in audit mode first: "
+            "apg proxy --mode audit --target ... --policy ...",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    policy = None
+    if Path(args.policy).exists():
+        try:
+            policy = load_policy_document(args.policy)
+        except PolicyLoadError as exc:
+            print(
+                f"WARNING: could not load current policy ({exc}); "
+                "suggesting from scratch",
+                file=sys.stderr,
+            )
+
+    suggestions = suggest_entries(events, policy)
+    if not suggestions:
+        print(
+            "No new allowlist entries needed — every observed call is already "
+            "permitted by the policy.",
+            file=sys.stderr,
+        )
+        return
+
+    print(
+        f"# Suggested additions for {args.policy} "
+        f"(from {len(events)} audit events)",
+        file=sys.stderr,
+    )
+    print('# Review, then merge into the "tools" object of your policy.', file=sys.stderr)
+    print(json.dumps({"tools": suggestions}, indent=2))
+
+
+def _run_policy_test(args):
+    """Run YAML allow/deny assertions against a policy through the real engine."""
+    from agent_policy_gateway.core.policy_test import (
+        PolicyTestError,
+        load_cases,
+        run_cases,
+    )
+    from agent_policy_gateway.proxy_app import build_evaluator
+
+    try:
+        cases = load_cases(args.testfile)
+    except PolicyTestError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    if not Path(args.policy).exists():
+        print(
+            f"WARNING: policy file not found ({args.policy}); "
+            "testing against default deny-all",
+            file=sys.stderr,
+        )
+
+    evaluator = build_evaluator(args.policy)
+    results = run_cases(cases, evaluator)
+
+    passed = 0
+    for result in results:
+        icon = "PASS" if result.passed else "FAIL"
+        print(f"  [{icon}] {result.name}  (expected {result.expected}, got {result.actual})")
+        if not result.passed and result.reason:
+            print(f"         reason: {result.reason}")
+        passed += 1 if result.passed else 0
+
+    total = len(results)
+    print()
+    print(f"{passed}/{total} cases passed")
+    if passed != total:
+        sys.exit(1)
 
 
 def _run_proxy(args):
