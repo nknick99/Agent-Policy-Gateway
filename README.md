@@ -341,6 +341,10 @@ Common Criteria. See **[docs/compliance-mapping.md](docs/compliance-mapping.md)*
 for the control-by-control mapping and how to produce evidence, along with an
 honest statement of what APG does *not* cover.
 
+See also the **[threat model](docs/threat-model.md)** (STRIDE on the gateway,
+with residual risks and deployment assumptions) and **[SECURITY.md](SECURITY.md)**
+for how to report a vulnerability.
+
 ---
 
 ## Performance
