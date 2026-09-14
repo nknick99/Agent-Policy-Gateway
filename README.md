@@ -467,7 +467,7 @@ Agent-Policy-Gateway/
 | Local AWS | Floci (dev); real AWS (prod) |
 | LLM Integration | Ollama / OpenAI / Anthropic (pluggable) |
 | Orchestration | Docker Compose |
-| Tests | pytest (236) · ruff · mypy · CI on 3.11–3.13 |
+| Tests | pytest (383) · ruff · mypy · CI on 3.11–3.13 |
 
 ---
 
